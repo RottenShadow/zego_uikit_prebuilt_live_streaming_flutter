@@ -37,6 +37,8 @@ extension PKServiceHost on ZegoUIKitPrebuiltLiveStreamingPKServices {
       subTag: 'service, host, quitPKBattle',
     );
 
+    _coreData.currentRequestID = '';
+
     updatePKUsers([]);
 
     final quitResult =
@@ -100,6 +102,8 @@ extension PKServiceHost on ZegoUIKitPrebuiltLiveStreamingPKServices {
         ),
       );
     }
+
+    _coreData.currentRequestID = '';
 
     updatePKUsers([]);
 

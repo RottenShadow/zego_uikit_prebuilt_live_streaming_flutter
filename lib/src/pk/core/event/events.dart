@@ -756,16 +756,14 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         );
       }
 
-      if (!isHost) {
-        final updatedPKUsers =
-            (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '')
-                    as List<dynamic>)
-                .map(
-                  (userJson) => ZegoLiveStreamingPKUser.fromJson(userJson),
-                )
-                .toList();
-        updatePKUsers(updatedPKUsers);
-      }
+      final updatedPKUsers =
+          (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '')
+                  as List<dynamic>)
+              .map(
+                (userJson) => ZegoLiveStreamingPKUser.fromJson(userJson),
+              )
+              .toList();
+      updatePKUsers(updatedPKUsers);
     }
   }
 
@@ -1019,6 +1017,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
     updatePKState(ZegoLiveStreamingPKBattleState.idle);
 
+    _coreData.currentRequestID = '';
+
     popupRequestReceivedDialog();
 
     _coreData.clearRequestReceivedEventInMinimizing();
@@ -1137,6 +1137,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     );
 
     updatePKUsers([]);
+
+    _coreData.currentRequestID = '';
 
     defaultAction() {
       showPKBattleEndedDialog(event);
