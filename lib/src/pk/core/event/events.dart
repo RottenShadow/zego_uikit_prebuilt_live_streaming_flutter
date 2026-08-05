@@ -669,12 +669,12 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     );
     _coreData.updatePropertyHostID(event);
 
-    /// PK is considered over for this viewer when either the PK room
-    /// properties were explicitly deleted, or a full room-properties snapshot
-    /// arrived without any PK-related keys (the host ended the PK by
-    /// overwriting the properties instead of deleting them). In both cases the
-    /// viewer must leave the PK view, otherwise it stays stuck even though the
-    /// host has left the PK.
+    /// PK is considered over when either the PK room properties were
+    /// explicitly deleted, or a full room-properties snapshot arrived without
+    /// any PK-related keys (the host ended the PK by overwriting the
+    /// properties instead of deleting them). In both cases every participant
+    /// (viewer and host) must leave the PK view, otherwise it stays stuck even
+    /// though the host has left the PK.
     final hasPKPropsInSet =
         event.setProperties.containsKey(roomPropKeyPKUsers) ||
             event.setProperties.containsKey(roomPropKeyRequestID);
@@ -682,8 +682,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         event.deleteProperties.containsKey(roomPropKeyPKUsers) ||
             event.deleteProperties.containsKey(roomPropKeyRequestID);
 
-    if (!isHost &&
-        (hasPKPropsInDelete || !hasPKPropsInSet) &&
+    if ((hasPKPropsInDelete || !hasPKPropsInSet) &&
         pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
       await ZegoUIKit().muteUserAudioVideo(
         _coreData.hostManager?.notifier.value?.id ?? '',
@@ -692,6 +691,11 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       await _mixer.stopPlayStream();
 
       updatePKUsers([]);
+
+      if (isHost) {
+        _coreData.lastQuitRequestID = _coreData.currentRequestID;
+        _coreData.currentRequestID = '';
+      }
       updatePKState(ZegoLiveStreamingPKBattleState.idle);
 
       _coreData.events?.onStateUpdated?.call(
