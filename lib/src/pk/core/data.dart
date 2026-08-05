@@ -183,6 +183,26 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServiceData {
     _currentRequestID = value;
   }
 
+  /// The last PK session the local host quit/ended/canceled. Unlike
+  /// [currentRequestID] this is NOT cleared immediately, so that a re-add to
+  /// that very session arriving while the host is still tearing the PK down is
+  /// still recognized as a re-join (see busy auto-reject exemption in
+  /// [_onInvitationReceived]) instead of being dropped as a fresh "busy"
+  /// request.
+  String _lastQuitRequestID = '';
+
+  String get lastQuitRequestID => _lastQuitRequestID;
+
+  set lastQuitRequestID(String value) {
+    ZegoLoggerService.logInfo(
+      'last quit request id set to:$value',
+      tag: 'live-streaming-pk',
+      subTag: 'service',
+    );
+
+    _lastQuitRequestID = value;
+  }
+
   /// inviting hosts
   List<String> remoteUserIDsWaitingResponseFromLocalRequest() {
     if (_currentRequestID.isEmpty) {

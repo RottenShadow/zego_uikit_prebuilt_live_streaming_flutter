@@ -207,6 +207,7 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     );
 
     _coreData.currentRequestID = sendResult.invitationID;
+    _coreData.lastQuitRequestID = '';
 
     return ZegoLiveStreamingPKServiceSendRequestResult(
       requestID: sendResult.invitationID,

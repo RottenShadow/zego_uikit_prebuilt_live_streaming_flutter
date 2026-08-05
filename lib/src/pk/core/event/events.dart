@@ -834,9 +834,12 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     /// "busy with another PK" situation: the host was/is part of this session,
     /// so it must be allowed to rejoin instead of being auto-rejected as busy.
     /// Note: [event.requestID] is compared BEFORE [_coreData.currentRequestID]
-    /// is overwritten below.
-    final isReAddToCurrentSession =
-        event.requestID.isNotEmpty && event.requestID == _coreData.currentRequestID;
+    /// is overwritten below. [lastQuitRequestID] covers a re-add arriving while
+    /// the host is still tearing the just-left session down, at which point
+    /// [currentRequestID] has already been cleared.
+    final isReAddToCurrentSession = event.requestID.isNotEmpty &&
+        (event.requestID == _coreData.currentRequestID ||
+            event.requestID == _coreData.lastQuitRequestID);
 
     if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle &&
         !isReAddToCurrentSession) {
@@ -874,6 +877,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
     /// reject/accept/quit invitation need this [event.requestID]
     _coreData.currentRequestID = event.requestID;
+    _coreData.lastQuitRequestID = '';
 
     event.isAutoAccept
         ? autoAcceptReceivedInvitation(event)
@@ -1017,6 +1021,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
     updatePKState(ZegoLiveStreamingPKBattleState.idle);
 
+    _coreData.lastQuitRequestID = event.requestID;
     _coreData.currentRequestID = '';
 
     popupRequestReceivedDialog();
@@ -1138,6 +1143,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
     updatePKUsers([]);
 
+    _coreData.lastQuitRequestID = event.requestID;
     _coreData.currentRequestID = '';
 
     defaultAction() {
