@@ -353,10 +353,23 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     if (_coreData.currentPKUsers.value.isEmpty || onlyLocalHostInPK) {
       ZegoLoggerService.logInfo(
         'pk users is empty or only local room host, not in pk, '
-        'onlyLocalHostInPK:$onlyLocalHostInPK, ',
+        'onlyLocalHostInPK:$onlyLocalHostInPK, '
+        'state:${pkStateNotifier.value}, ',
         tag: 'live-streaming-pk',
         subTag: 'service, connect-users, audienceOnPKUsersChanged',
       );
+
+      /// The audience no longer has any PK host to show. If we were still in
+      /// PK (or loading), tear down the mixer stream and reset the state,
+      /// otherwise the audience can be stuck showing an empty/black PK view.
+      if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+        if (_coreData.currentPKUsers.value.isEmpty) {
+          await _mixer.stopPlayStream();
+        }
+
+        updatePKState(ZegoLiveStreamingPKBattleState.idle);
+      }
+
       return;
     }
 
@@ -454,16 +467,30 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       );
     } else {
       updatePKState(ZegoLiveStreamingPKBattleState.loading);
-      mixAudioVideoLoaded.addListener(onMixAudioVideoLoadStatusChanged);
+
+      /// Only attach to the latest notifier instance. A re-entrant
+      /// [audienceOnPKUsersChanged] may have been called again, and attaching
+      /// to a stale instance would leave the state stuck in loading forever.
+      if (_mixAudioVideoLoadedNotifier != mixAudioVideoLoaded) {
+        _mixAudioVideoLoadedNotifier
+            ?.removeListener(onMixAudioVideoLoadStatusChanged);
+        _mixAudioVideoLoadedNotifier = mixAudioVideoLoaded;
+        mixAudioVideoLoaded.addListener(onMixAudioVideoLoadStatusChanged);
+      }
     }
   }
 
   void onMixAudioVideoLoadStatusChanged() {
-    final mixAudioVideoLoaded =
-        ZegoUIKit().getMixAudioVideoLoadedNotifier(_mixer.mixerID);
-    mixAudioVideoLoaded.removeListener(onMixAudioVideoLoadStatusChanged);
+    final mixAudioVideoLoaded = _mixAudioVideoLoadedNotifier;
+    _mixAudioVideoLoadedNotifier = null;
+    mixAudioVideoLoaded?.removeListener(onMixAudioVideoLoadStatusChanged);
 
-    if (mixAudioVideoLoaded.value) {
+    if (true != mixAudioVideoLoaded?.value) {
+      /// not loaded yet, keep the loading state
+      return;
+    }
+
+    if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
       updatePKState(ZegoLiveStreamingPKBattleState.inPK);
 
       ZegoUIKit().muteUserAudioVideo(

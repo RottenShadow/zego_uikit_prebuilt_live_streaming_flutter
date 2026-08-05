@@ -90,28 +90,41 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           subTag: 'pk event',
         );
 
-        if (result.properties.containsKey(roomPropKeyRequestID)) {
-          /// After entering the room, if found that there was a PK going on,
-          /// which indicates that the app was killed earlier.
-          /// At this time, It cannot re-enter the PK.
+        if (isHost) {
+          /// The PK recovery logic below is only for the LIVE creator whose app
+          /// was killed during a PK and re-enters the room. It cannot re-enter
+          /// the PK, so it quits and cleans up the stale room properties.
+          ///
+          /// An audience/viewer must NOT run this recovery, otherwise it would
+          /// tear down the PK room properties (and notify the invitation) for
+          /// every other participant while a PK is still ongoing.
+          if (result.properties.containsKey(roomPropKeyRequestID)) {
+            /// After entering the room, if found that there was a PK going on,
+            /// which indicates that the app was killed earlier.
+            /// At this time, It cannot re-enter the PK.
 
-          ZegoLoggerService.logInfo(
-            'room property contain pk keys, quit pk',
-            tag: 'live-streaming-pk',
-            subTag: 'pk event',
-          );
-
-          quitPKBattle(
-            requestID: result.properties[roomPropKeyRequestID] ?? '',
-            force: true,
-          );
-        }
-
-        await ZegoUIKit().getSignalingPlugin().deleteRoomProperties(
-              roomID: ZegoUIKit().getSignalingPlugin().getRoomID(),
-              keys: [roomPropKeyRequestID, roomPropKeyHost, roomPropKeyPKUsers],
-              showErrorLog: false,
+            ZegoLoggerService.logInfo(
+              'room property contain pk keys, quit pk',
+              tag: 'live-streaming-pk',
+              subTag: 'pk event',
             );
+
+            quitPKBattle(
+              requestID: result.properties[roomPropKeyRequestID] ?? '',
+              force: true,
+            );
+          }
+
+          await ZegoUIKit().getSignalingPlugin().deleteRoomProperties(
+                roomID: ZegoUIKit().getSignalingPlugin().getRoomID(),
+                keys: [
+                  roomPropKeyRequestID,
+                  roomPropKeyHost,
+                  roomPropKeyPKUsers
+                ],
+                showErrorLog: false,
+              );
+        }
       });
     }
   }

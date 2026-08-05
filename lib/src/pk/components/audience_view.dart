@@ -46,10 +46,9 @@ class ZegoLiveStreamingPKAudienceViewState
         widget.mixerStreamID,
       ),
       builder: (context, Widget? mixView, _) {
-        if (null == mixView) {
-          return const SizedBox.shrink();
-        }
-
+        /// Always render the PK layout. Even when the mixer video view/frame is
+        /// not ready yet (null), render the host backgrounds/avatars plus a
+        /// loading indicator instead of an empty black area.
         return LayoutBuilder(builder: (context, constraints) {
           final mixerLayoutResolution = widget.mixerLayout.getResolution();
           final rectList = widget.mixerLayout.getRectList(
@@ -59,9 +58,25 @@ class ZegoLiveStreamingPKAudienceViewState
 
           return Stack(
             children: [
-              mixView,
+              if (null != mixView) mixView,
               ...background(rectList),
               ...foreground(rectList),
+              if (null == mixView)
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: Center(
+                      child: widget.config.pkBattle.hostReconnectingBuilder
+                              ?.call(
+                            context,
+                            widget.hosts.isEmpty
+                                ? null
+                                : widget.hosts.first.userInfo,
+                            {},
+                          ) ??
+                          const CircularProgressIndicator(),
+                    ),
+                  ),
+                ),
             ],
           );
         });

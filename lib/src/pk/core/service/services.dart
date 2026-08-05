@@ -49,6 +49,10 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
   StreamSubscription? _waitingQueryRoomPropertiesSubscription;
   Timer? _heartBeatTimer;
 
+  /// The mix audio/video loaded notifier that
+  /// [onMixAudioVideoLoadStatusChanged] is currently attached to.
+  ValueNotifier<bool>? _mixAudioVideoLoadedNotifier;
+
   final _mixer = ZegoUIKitPrebuiltLiveStreamingPKServiceMixer();
 
   final pkStateNotifier = ValueNotifier<ZegoLiveStreamingPKBattleState>(

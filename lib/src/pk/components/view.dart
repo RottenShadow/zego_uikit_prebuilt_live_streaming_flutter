@@ -118,7 +118,10 @@ class _ZegoLiveStreamingPKV2ViewState extends State<ZegoLiveStreamingPKV2View> {
       valueListenable:
           ZegoUIKitPrebuiltLiveStreamingPK.instance.pkStateNotifier,
       builder: (BuildContext context, pkBattleState, Widget? child) {
-        if (!ZegoUIKitPrebuiltLiveStreamingPK.instance.isInPK) {
+        final isLoadingOrInPK =
+            ZegoLiveStreamingPKBattleState.loading == pkBattleState ||
+                ZegoLiveStreamingPKBattleState.inPK == pkBattleState;
+        if (!isLoadingOrInPK) {
           return const SizedBox.shrink();
         } else {
           return ConstrainedBox(
