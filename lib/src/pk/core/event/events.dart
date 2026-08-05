@@ -818,7 +818,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       return;
     }
 
-    if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+    /// A re-add to the very session the local host is in / just left is NOT a
+    /// "busy with another PK" situation: the host was/is part of this session,
+    /// so it must be allowed to rejoin instead of being auto-rejected as busy.
+    /// Note: [event.requestID] is compared BEFORE [_coreData.currentRequestID]
+    /// is overwritten below.
+    final isReAddToCurrentSession =
+        event.requestID.isNotEmpty && event.requestID == _coreData.currentRequestID;
+
+    if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle &&
+        !isReAddToCurrentSession) {
       final ret =
           await ZegoUIKit().getSignalingPlugin().refuseAdvanceInvitation(
                 invitationID: event.requestID,
@@ -841,6 +850,14 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       );
 
       return;
+    }
+
+    /// The host is still tearing down the PK it just left. Reset the
+    /// transitional state so the invite dialog can show and
+    /// [acceptPKBattleRequest] can pass its response-waiting guard.
+    if (isReAddToCurrentSession &&
+        pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+      updatePKState(ZegoLiveStreamingPKBattleState.idle);
     }
 
     /// reject/accept/quit invitation need this [event.requestID]

@@ -51,42 +51,12 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
       );
     }
 
-    var inInvitationUserIDs = <String>[];
-    for (var userID in targetHostIDs) {
-      if (ZegoUIKit()
-          .getSignalingPlugin()
-          .isUserInAdvanceInvitationNow(userID)) {
-        inInvitationUserIDs.add(userID);
-      }
-    }
-    var tempTargetHostUserIDs = List<String>.from(targetHostIDs);
-    tempTargetHostUserIDs.removeWhere(
-      (userID) => inInvitationUserIDs.contains(userID),
-    );
-    if (tempTargetHostUserIDs.isEmpty) {
-      ZegoLoggerService.logInfo(
-        'could not send pk request, '
-        'all user is in PK, '
-        'param target host id:$targetHostIDs, '
-        'now target host user ids:$tempTargetHostUserIDs, '
-        'advance data:${ZegoUIKit().getSignalingPlugin().advanceInvitationToString()}, ',
-        tag: 'live-streaming-pk',
-        subTag: 'service, host, sendPKBattleRequest',
-      );
-
-      return ZegoLiveStreamingPKServiceSendRequestResult(
-        errorUserIDs: inInvitationUserIDs,
-        error: PlatformException(
-          code: '-1',
-          message: 'all user is in PK or requesting',
-        ),
-      );
-    }
-
     final isWaitingRemoteResponse =
         _coreData.remoteUserIDsWaitingResponseFromLocalRequest().isNotEmpty;
     final isWaitingLocalResponse =
         _coreData.isRemoteRequestWaitingLocalResponse();
+    final needAddToCurrentSession =
+        isInPK || isWaitingRemoteResponse || isWaitingLocalResponse;
     ZegoLoggerService.logInfo(
       'isInPK:$isInPK, '
       'isWaitingRemoteResponse:$isWaitingRemoteResponse, '
@@ -94,7 +64,58 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
       tag: 'live-streaming-pk',
       subTag: 'service, host, sendPKBattleRequest',
     );
-    return (isInPK || isWaitingRemoteResponse || isWaitingLocalResponse)
+
+    var tempTargetHostUserIDs = List<String>.from(targetHostIDs);
+    if (needAddToCurrentSession) {
+      /// Extending an ongoing PK session (e.g. re-adding a host who just quit).
+      /// Do NOT pre-filter with the plugin's local "in invitation" cache here:
+      /// right after a host quits this session, the local cache can still
+      /// report them as a current member until the quit event propagates,
+      /// which would silently drop the re-invite. Let the signaling
+      /// plugin/ZIM arbitrate and return per-user errors instead.
+      ZegoLoggerService.logInfo(
+        'send pk request, '
+        'is in pk or waiting response, '
+        'skip in-invitation pre-filter, '
+        'will add target host user ids:$tempTargetHostUserIDs to '
+        'request:$_coreData.currentRequestID',
+        tag: 'live-streaming-pk',
+        subTag: 'service, host, sendPKBattleRequest',
+      );
+    } else {
+      var inInvitationUserIDs = <String>[];
+      for (var userID in targetHostIDs) {
+        if (ZegoUIKit()
+            .getSignalingPlugin()
+            .isUserInAdvanceInvitationNow(userID)) {
+          inInvitationUserIDs.add(userID);
+        }
+      }
+      tempTargetHostUserIDs.removeWhere(
+        (userID) => inInvitationUserIDs.contains(userID),
+      );
+      if (tempTargetHostUserIDs.isEmpty) {
+        ZegoLoggerService.logInfo(
+          'could not send pk request, '
+          'all user is in PK, '
+          'param target host id:$targetHostIDs, '
+          'now target host user ids:$tempTargetHostUserIDs, '
+          'advance data:${ZegoUIKit().getSignalingPlugin().advanceInvitationToString()}, ',
+          tag: 'live-streaming-pk',
+          subTag: 'service, host, sendPKBattleRequest',
+        );
+
+        return ZegoLiveStreamingPKServiceSendRequestResult(
+          errorUserIDs: inInvitationUserIDs,
+          error: PlatformException(
+            code: '-1',
+            message: 'all user is in PK or requesting',
+          ),
+        );
+      }
+    }
+
+    return needAddToCurrentSession
         ? _addPKBattleRequest(
             _coreData.currentRequestID,
             tempTargetHostUserIDs,
