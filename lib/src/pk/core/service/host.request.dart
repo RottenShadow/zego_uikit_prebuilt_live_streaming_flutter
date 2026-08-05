@@ -451,17 +451,27 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     final sessionInitiator =
         ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(requestID);
     if (null != sessionInitiator &&
+        sessionInitiator.userID != ZegoUIKit().getLocalUser().id &&
+        sessionInitiator.extendedData.isNotEmpty &&
         targetHost.userInfo.id != sessionInitiator.userID) {
-      final initiatorPKRequestData = PKServiceRequestData.fromJson(
-        jsonDecode(sessionInitiator.extendedData) as Map<String, dynamic>,
-      );
-      sessionHosts.add(ZegoLiveStreamingPKUser(
-        userInfo: ZegoUIKitUser(
-          id: sessionInitiator.userID,
-          name: initiatorPKRequestData.inviter.name,
-        ),
-        liveID: initiatorPKRequestData.liveID,
-      ));
+      try {
+        final initiatorPKRequestData = PKServiceRequestData.fromJson(
+          jsonDecode(sessionInitiator.extendedData) as Map<String, dynamic>,
+        );
+        sessionHosts.add(ZegoLiveStreamingPKUser(
+          userInfo: ZegoUIKitUser(
+            id: sessionInitiator.userID,
+            name: initiatorPKRequestData.inviter.name,
+          ),
+          liveID: initiatorPKRequestData.liveID,
+        ));
+      } catch (e) {
+        ZegoLoggerService.logInfo(
+          'acceptPKBattleRequest, parse initiator extendedData failed:$e',
+          tag: 'live-streaming-pk',
+          subTag: 'service, host, acceptPKBattleRequest',
+        );
+      }
     }
 
     ZegoLoggerService.logInfo(
