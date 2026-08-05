@@ -669,23 +669,37 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     );
     _coreData.updatePropertyHostID(event);
 
-    if (event.deleteProperties.containsKey(roomPropKeyPKUsers)) {
-      if (!isHost) {
-        await ZegoUIKit().muteUserAudioVideo(
-          _coreData.hostManager?.notifier.value?.id ?? '',
-          false,
-        );
-        await _mixer.stopPlayStream();
+    /// PK is considered over for this viewer when either the PK room
+    /// properties were explicitly deleted, or a full room-properties snapshot
+    /// arrived without any PK-related keys (the host ended the PK by
+    /// overwriting the properties instead of deleting them). In both cases the
+    /// viewer must leave the PK view, otherwise it stays stuck even though the
+    /// host has left the PK.
+    final hasPKPropsInSet =
+        event.setProperties.containsKey(roomPropKeyPKUsers) ||
+            event.setProperties.containsKey(roomPropKeyRequestID);
+    final hasPKPropsInDelete =
+        event.deleteProperties.containsKey(roomPropKeyPKUsers) ||
+            event.deleteProperties.containsKey(roomPropKeyRequestID);
 
-        updatePKUsers([]);
-        updatePKState(ZegoLiveStreamingPKBattleState.idle);
+    if (!isHost &&
+        (hasPKPropsInDelete || !hasPKPropsInSet) &&
+        pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+      await ZegoUIKit().muteUserAudioVideo(
+        _coreData.hostManager?.notifier.value?.id ?? '',
+        false,
+      );
+      await _mixer.stopPlayStream();
 
-        _coreData.events?.onStateUpdated?.call(
-          isLiving
-              ? ZegoLiveStreamingState.living
-              : ZegoLiveStreamingState.idle,
-        );
-      }
+      updatePKUsers([]);
+      updatePKState(ZegoLiveStreamingPKBattleState.idle);
+
+      _coreData.events?.onStateUpdated?.call(
+        isLiving
+            ? ZegoLiveStreamingState.living
+            : ZegoLiveStreamingState.idle,
+      );
+      return;
     }
 
     if (event.setProperties.containsKey(roomPropKeyPKUsers)) {
