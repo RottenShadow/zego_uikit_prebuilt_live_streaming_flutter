@@ -115,7 +115,7 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
       }
     }
 
-    return needAddToCurrentSession
+    return (needAddToCurrentSession && _coreData.currentRequestID.isNotEmpty)
         ? _addPKBattleRequest(
             _coreData.currentRequestID,
             tempTargetHostUserIDs,
@@ -409,7 +409,8 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     String customData = '',
   }) async {
     final isWaitingLocalResponse =
-        _coreData.isRemoteRequestWaitingLocalResponse();
+        _coreData.isRemoteRequestWaitingLocalResponse() ||
+            _coreData.isLocalInitiatorWaitingResponse();
     if (!_serviceInitialized ||
         !isLiving ||
         !isHost ||
@@ -528,7 +529,8 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     String customData = '',
   }) async {
     final isWaitingLocalResponse =
-        _coreData.isRemoteRequestWaitingLocalResponse();
+        _coreData.isRemoteRequestWaitingLocalResponse() ||
+            _coreData.isLocalInitiatorWaitingResponse();
     if (!_serviceInitialized ||
         !isLiving ||
         !isHost ||

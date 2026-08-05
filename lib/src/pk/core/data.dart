@@ -226,6 +226,25 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServiceData {
 
     return remoteUserID?.isNotEmpty ?? false;
   }
+
+  /// Local host is the initiator of the current session and is waiting for a
+  /// local response. This happens when the initiator quits a PK and a
+  /// remaining host re-invites them by re-adding them to the same session:
+  /// they appear as the initiator (state waiting) rather than an invitee, so
+  /// [isRemoteRequestWaitingLocalResponse] would miss them.
+  bool isLocalInitiatorWaitingResponse() {
+    if (_currentRequestID.isEmpty) {
+      return false;
+    }
+
+    final initiator =
+        ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(_currentRequestID);
+    if (initiator?.userID != ZegoUIKit().getLocalUser().id) {
+      return false;
+    }
+
+    return AdvanceInvitationState.waiting == initiator?.state;
+  }
 }
 
 mixin ZegoUIKitPrebuiltLiveStreamingPKEventData {
