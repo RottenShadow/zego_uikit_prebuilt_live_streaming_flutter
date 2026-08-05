@@ -429,6 +429,14 @@ class ZegoLiveStreamingCentralAudioVideoViewState
         return false;
       }
 
+      /// Never filter out the LIVE creator. Even when the host has both camera
+      /// and microphone disabled (e.g. returning from a PK), the host should
+      /// remain visible and render its avatar in audio mode.
+      if (ZegoLiveStreamingManagers().hostManager?.isHost(targetUser) ??
+          false) {
+        return false;
+      }
+
       if (null != widget.config.audioVideoView.visible) {
         var targetUserRole = ZegoLiveStreamingRole.coHost;
         if (ZegoLiveStreamingManagers().hostManager?.isHost(targetUser) ??
