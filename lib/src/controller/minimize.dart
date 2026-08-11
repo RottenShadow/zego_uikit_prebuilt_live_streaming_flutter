@@ -143,4 +143,91 @@ class ZegoLiveStreamingControllerMinimizingImpl
       ZegoLiveStreamingMiniOverlayPageState.idle,
     );
   }
+
+  /// Force close the live streaming while it is minimized.
+  ///
+  /// It hides the minimize overlay and fully un-initializes the live
+  /// streaming (leaves the room and stops the internal managers), without
+  /// any page navigation, so it can be called without a [BuildContext].
+  ///
+  /// Returns `false` if the live streaming is not in the minimized state.
+  Future<bool> forceClose() async {
+    if (ZegoLiveStreamingMiniOverlayPageState.minimizing != state) {
+      ZegoLoggerService.logInfo(
+        'is not minimizing, ignore',
+        tag: 'live-streaming',
+        subTag: 'controller.minimize, force close',
+      );
+
+      return false;
+    }
+
+    final events = private.minimizeData?.events;
+
+    /// hide the minimize overlay
+    ZegoLiveStreamingMiniOverlayMachine().changeState(
+      ZegoLiveStreamingMiniOverlayPageState.idle,
+    );
+
+    final hostManager = ZegoLiveStreamingManagers().hostManager;
+    if (hostManager?.isLocalHost ?? false) {
+      hostManager?.hostUpdateEnabledNotifier.value = false;
+      await ZegoUIKit().updateRoomProperties({
+        RoomPropertyKey.host.text: '',
+        RoomPropertyKey.liveStatus.text: LiveStatus.ended.index.toString()
+      });
+    }
+
+    await ZegoLiveStreamingManagers().uninitPluginAndManagers();
+    await ZegoUIKit().resetSoundEffect();
+    await ZegoUIKit().resetBeautyEffect();
+    await ZegoUIKit().leaveRoom();
+
+    await ZegoUIKitPrebuiltLiveStreamingController().pip.cancelBackground();
+
+    events?.onEnded?.call(
+      ZegoLiveStreamingEndEvent(
+        reason: ZegoLiveStreamingEndReason.localLeave,
+        isFromMinimizing: true,
+      ),
+      () {
+        ZegoUIKitPrebuiltLiveStreamingController().minimize.hide();
+      },
+    );
+
+    ZegoUIKitPrebuiltLiveStreamingController().private.uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController().pk.private.uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController().room.private.uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .user
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .message
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .coHost
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .audioVideo
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .minimize
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController().pip.private.uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .screenSharing
+        .private
+        .uninitByPrebuilt();
+    ZegoUIKitPrebuiltLiveStreamingController()
+        .swiping
+        .private
+        .uninitByPrebuilt();
+
+    return true;
+  }
 }

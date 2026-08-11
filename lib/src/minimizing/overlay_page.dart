@@ -104,9 +104,15 @@ class ZegoUIKitPrebuiltLiveStreamingMiniOverlayPage extends StatefulWidget {
     this.backgroundBuilder,
     this.foreground,
     this.avatarBuilder,
+    this.restoreOverride,
   }) : super(key: key);
 
   final BuildContext Function() contextQuery;
+
+  /// Hook to replace the default [ZegoUIKitPrebuiltLiveStreamingController].minimize.restore
+  /// behavior. When set, the mini view tap calls it with the minimized room's
+  /// liveID instead of pushing the prebuilt widget itself.
+  final FutureOr<void> Function(String liveID)? restoreOverride;
   final bool rootNavigator;
   final bool navigatorWithSafeArea;
 
@@ -251,6 +257,11 @@ class _ZegoUIKitPrebuiltLiveStreamingMiniOverlayPageState
       case ZegoLiveStreamingMiniOverlayPageState.minimizing:
         return GestureDetector(
           onTap: () {
+            final overridden = widget.restoreOverride;
+            if (overridden != null) {
+              overridden(prebuiltData?.liveID ?? '');
+              return;
+            }
             ZegoUIKitPrebuiltLiveStreamingController().minimize.restore(
                   widget.contextQuery(),
                   rootNavigator: widget.rootNavigator,
