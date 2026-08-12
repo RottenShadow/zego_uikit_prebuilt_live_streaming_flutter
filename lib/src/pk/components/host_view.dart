@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 // Package imports:
+import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:zego_uikit/zego_uikit.dart';
 
 // Project imports:
@@ -12,14 +13,14 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 
 class ZegoLiveStreamingPKHostView extends StatefulWidget {
   const ZegoLiveStreamingPKHostView({
-    Key? key,
+    super.key,
     required this.hosts,
     required this.mixerLayout,
     required this.config,
     this.foregroundBuilder,
     this.backgroundBuilder,
     this.avatarConfig,
-  }) : super(key: key);
+  });
 
   final ZegoLiveStreamingPKMixerLayout mixerLayout;
   final List<ZegoLiveStreamingPKUser> hosts;
@@ -71,6 +72,7 @@ class ZegoLiveStreamingPKHostViewState
               rect: rect,
               child: ZegoAudioVideoView(
                 user: host.userInfo,
+                videoViewMode: ZegoViewMode.AspectFill,
                 foregroundBuilder: (
                   BuildContext context,
                   Size size,
@@ -122,14 +124,7 @@ class ZegoLiveStreamingPKHostViewState
                 backgroundBuilder:
                     widget.config.audioVideoView.backgroundBuilder ??
                         defaultPKBackgroundBuilder,
-                avatarConfig: widget.avatarConfig ??
-                    ZegoAvatarConfig(
-                      showInAudioMode:
-                          widget.config.audioVideoView.showAvatarInAudioMode,
-                      showSoundWavesInAudioMode: widget
-                          .config.audioVideoView.showSoundWavesInAudioMode,
-                      builder: widget.config.avatarBuilder,
-                    ),
+                avatarConfig: avatarConfigFor(rect),
               ),
             ),
           ],
@@ -138,5 +133,22 @@ class ZegoLiveStreamingPKHostViewState
     }
 
     return widgets;
+  }
+
+  ZegoAvatarConfig avatarConfigFor(Rect rect) {
+    final userConfig = widget.avatarConfig;
+    final avatarSize = userConfig?.size ?? Size(rect.width / 2, rect.width / 2);
+
+    return ZegoAvatarConfig(
+      showInAudioMode: userConfig?.showInAudioMode ??
+          widget.config.audioVideoView.showAvatarInAudioMode,
+      showSoundWavesInAudioMode: userConfig?.showSoundWavesInAudioMode ??
+          widget.config.audioVideoView.showSoundWavesInAudioMode,
+      verticalAlignment:
+          userConfig?.verticalAlignment ?? ZegoAvatarAlignment.center,
+      size: avatarSize,
+      soundWaveColor: userConfig?.soundWaveColor,
+      builder: userConfig?.builder ?? widget.config.avatarBuilder,
+    );
   }
 }

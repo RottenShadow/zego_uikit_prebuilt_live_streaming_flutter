@@ -18,9 +18,9 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/core/live_status_manager.
 import 'package:zego_uikit_prebuilt_live_streaming/src/core/plugins.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/events.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/events.defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/internal/pk_combine_notifier.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/core.dart';
-import 'package:zego_uikit_prebuilt_live_streaming/src/events.defines.dart';
 
 part 'core_manager.audio_video.dart';
 
