@@ -73,7 +73,6 @@ tree.txt
 release.sh
 client.txt
 Podfile.lock
-pubspec_overrides.yaml
 melos*.iml
 android/.gradle/
 local.properties
