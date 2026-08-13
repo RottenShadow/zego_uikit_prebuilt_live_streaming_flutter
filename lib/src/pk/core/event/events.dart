@@ -1066,7 +1066,14 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       subTag: 'pk event',
     );
 
-    if (!ZegoUIKitPrebuiltLiveStreamingPK.instance.isInPK) {
+    /// Only the very first acceptance may start the PK from idle. Any other
+    /// state (including the transient [loading] set by the first accept)
+    /// means a PK session is already being assembled, so a second/third
+    /// acceptance must append to the existing host list instead of resetting
+    /// it. Using `isInPK` here would let a concurrent second accept land while
+    /// still `loading` and overwrite the first host, dropping them from the
+    /// layout.
+    if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
       /// first invitee(other room's host) accept, start pk, update layout
 
       updatePKState(ZegoLiveStreamingPKBattleState.loading);
