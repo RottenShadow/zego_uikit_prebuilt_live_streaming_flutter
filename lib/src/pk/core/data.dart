@@ -150,6 +150,13 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServiceData {
 
   List<String> playingHostIDs = [];
 
+  /// Whether the latest [currentPKUsers] update was driven by a room-properties
+  /// snapshot (backend/another writer) rather than a local action. Read by
+  /// [onPKUsersChanged] synchronously when the notifier fires, so the host can
+  /// skip echoing room properties back (which would otherwise spam the room
+  /// with the very update that caused it).
+  bool pkUsersUpdateFromRoomProps = false;
+
   /// local send invitation:
   /// 1. assign:
   ///   a. send

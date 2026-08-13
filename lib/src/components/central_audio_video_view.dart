@@ -429,10 +429,26 @@ class ZegoLiveStreamingCentralAudioVideoViewState
   List<ZegoUIKitUser> audioVideoViewFilter(List<ZegoUIKitUser> users) {
     final screenSharingUserIDList =
         ZegoUIKit().getScreenSharingList().map((e) => e.id).toList();
+
+    /// Cross-room PK hosts must NEVER be rendered as co-hosts in the normal
+    /// audio/video layout, even during a transient state flip (e.g. while the
+    /// PK view is being torn down). They are playing other-room streams and
+    /// are not co-hosts of this room.
+    final pkHostIDs = ZegoUIKitPrebuiltLiveStreamingPK
+        .instance.connectedPKHostsNotifier.value
+        .where((pkUser) => pkUser.userInfo.id != ZegoUIKit().getLocalUser().id)
+        .map((pkUser) => pkUser.userInfo.id)
+        .toSet();
+
     users.removeWhere((targetUser) {
       if (screenSharingUserIDList.contains(targetUser.id)) {
         /// not filter screen sharing
         return false;
+      }
+
+      if (pkHostIDs.contains(targetUser.id)) {
+        /// never show PK hosts as co-hosts in the normal audio/video layout
+        return true;
       }
 
       /// Never filter out the LIVE creator. Even when the host has both camera

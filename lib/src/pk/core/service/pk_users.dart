@@ -51,8 +51,9 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
   }
 
   void updatePKUsers(
-    List<ZegoLiveStreamingPKUser> tempUpdatedPKUsers,
-  ) {
+    List<ZegoLiveStreamingPKUser> tempUpdatedPKUsers, {
+    bool fromRoomProps = false,
+  }) {
     var updatedPKUsers = removeDuplicatePKUsers(tempUpdatedPKUsers);
 
     final currentPKUserIDs =
@@ -86,10 +87,12 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       ZegoLoggerService.logInfo(
         'previous:${_coreData.previousPKUsers.value}, '
         'current:$updatedPKUsers, '
-        'current details:$updatedPKUsers, ',
+        'current details:$updatedPKUsers, '
+        'fromRoomProps:$fromRoomProps, ',
         tag: 'live-streaming-pk',
         subTag: 'service, connect-users, update pk users',
       );
+      _coreData.pkUsersUpdateFromRoomProps = fromRoomProps;
       _coreData.currentPKUsers.value = updatedPKUsers;
     }
   }
@@ -139,15 +142,20 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       return;
     }
 
-    // isHost ? await hostOnPKUsersChanged() : await audienceOnPKUsersChanged();
+    /// Capture synchronously while the notifier fires; a later update can
+    /// overwrite the flag before the async chain below runs.
+    final fromRoomProps = _coreData.pkUsersUpdateFromRoomProps;
+
     return waitCompleter('onPKUsersChanged').then((_) async {
-      isHost ? await hostOnPKUsersChanged() : await audienceOnPKUsersChanged();
+      isHost
+          ? await hostOnPKUsersChanged(fromRoomProps: fromRoomProps)
+          : await audienceOnPKUsersChanged(fromRoomProps: fromRoomProps);
     }).then((_) {
       completeCompleter('onPKUsersChanged');
     });
   }
 
-  Future<void> hostOnPKUsersChanged() async {
+  Future<void> hostOnPKUsersChanged({bool fromRoomProps = false}) async {
     final isLocalHostInPK = -1 !=
         _coreData.currentPKUsers.value.indexWhere(
             (pkUser) => pkUser.userInfo.id == ZegoUIKit().getLocalUser().id);
@@ -161,11 +169,13 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     );
 
     return isLocalHostInPK
-        ? await connectedHostOnPKUsersChanged()
+        ? await connectedHostOnPKUsersChanged(fromRoomProps: fromRoomProps)
         : await disconnectedHostOnPKUsersChanged();
   }
 
-  Future<void> connectedHostOnPKUsersChanged() async {
+  Future<void> connectedHostOnPKUsersChanged({
+    bool fromRoomProps = false,
+  }) async {
     final onlyLocalInPK = _coreData.currentPKUsers.value.length == 1 &&
         _coreData.currentPKUsers.value.first.userInfo.id ==
             ZegoUIKit().getLocalUser().id;
@@ -282,20 +292,29 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
 
     /// update room property, notify the host info && layout
-    await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
-          roomID: _coreData.roomID,
-          roomProperties: {
-            roomPropKeyRequestID: _coreData.currentRequestID,
-            roomPropKeyHost: ZegoUIKit().getLocalUser().id,
-            roomPropKeyPKUsers: jsonEncode(
-              _coreData.currentPKUsers.value,
-            )
-          },
-          isForce: true,
-          isUpdateOwner: true,
-        );
+    ///
+    /// Skip echoing when this change was driven by a room-properties snapshot
+    /// (backend or another host): the source has already published it, and
+    /// re-writing it back with `isForce: true` only spams the room attributes
+    /// (and can loop with the backend), which is the root of the PK UI
+    /// flicker. Locally-initiated changes (invitation accepted/quit) still
+    /// echo to notify the audience.
+    if (!fromRoomProps) {
+      await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
+            roomID: _coreData.roomID,
+            roomProperties: {
+              roomPropKeyRequestID: _coreData.currentRequestID,
+              roomPropKeyHost: ZegoUIKit().getLocalUser().id,
+              roomPropKeyPKUsers: jsonEncode(
+                _coreData.currentPKUsers.value,
+              )
+            },
+            isForce: true,
+            isUpdateOwner: true,
+          );
+    }
 
-    if (onlyLocalInPK) {
+    if (onlyLocalInPK && !fromRoomProps) {
       /// all leave but only local
       await quitPKBattle(requestID: _coreData.currentRequestID);
     }
@@ -340,7 +359,9 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
   }
 
-  Future<void> audienceOnPKUsersChanged() async {
+  Future<void> audienceOnPKUsersChanged({
+    bool fromRoomProps = false,
+  }) async {
     ZegoLoggerService.logInfo(
       'pk users:${_coreData.currentPKUsers.value}',
       tag: 'live-streaming-pk',
@@ -369,6 +390,27 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
 
         updatePKState(ZegoLiveStreamingPKBattleState.idle);
       }
+
+      return;
+    }
+
+    /// A backend reorder (or duplicate rewrite) changes only the order of the
+    /// very same hosts: [currentPKUsers] has already been updated so the PK
+    /// overlay follows, but the mix stream must NOT be restarted - restarting
+    /// it on every backend room-attribute update is what caused the UI
+    /// flicker.
+    final isPureOrderChange = _coreData.currentPKUsers.value.isNotEmpty &&
+        addedPKUsersCompareCurrent.isEmpty &&
+        removedPKUsersCompareCurrent.isEmpty;
+    if (isPureOrderChange &&
+        pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+      ZegoLoggerService.logInfo(
+        'only pk host order changed, skip mix playback restart, '
+        'fromRoomProps:$fromRoomProps, '
+        'pk users:${_coreData.currentPKUsers.value}',
+        tag: 'live-streaming-pk',
+        subTag: 'service, connect-users, audienceOnPKUsersChanged',
+      );
 
       return;
     }

@@ -659,7 +659,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     // debugPrint('_onReceiveSEIEvent $event');
   }
 
-  void _onRoomAttributesUpdated(
+  Future<void> _onRoomAttributesUpdated(
     ZegoSignalingPluginRoomPropertiesUpdatedEvent event,
   ) async {
     ZegoLoggerService.logInfo(
@@ -669,40 +669,45 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     );
     _coreData.updatePropertyHostID(event);
 
-    /// PK is considered over when either the PK room properties were
-    /// explicitly deleted, or a full room-properties snapshot arrived without
-    /// any PK-related keys (the host ended the PK by overwriting the
-    /// properties instead of deleting them). In both cases every participant
-    /// (viewer and host) must leave the PK view, otherwise it stays stuck even
-    /// though the host has left the PK.
-    final hasPKPropsInSet =
-        event.setProperties.containsKey(roomPropKeyPKUsers) ||
-            event.setProperties.containsKey(roomPropKeyRequestID);
-    final hasPKPropsInDelete =
+    /// Room-attribute driven PK updates are serialized so that a delete
+    /// (PK end) and a later re-set (PK restart) can never interleave.
+    return waitRoomAttributesCompleter('onRoomAttributesUpdated')
+        .then((_) async {
+          try {
+            await handleRoomAttributesUpdated(event);
+          } finally {
+            completeRoomAttributesCompleter('onRoomAttributesUpdated');
+          }
+        })
+        .catchError((Object error) {
+          ZegoLoggerService.logError(
+            'onRoomAttributesUpdated error:$error',
+            tag: 'live-streaming-pk',
+            subTag: 'pk event',
+          );
+        });
+  }
+
+  Future<void> handleRoomAttributesUpdated(
+    ZegoSignalingPluginRoomPropertiesUpdatedEvent event,
+  ) async {
+    final pkPropsInDelete =
         event.deleteProperties.containsKey(roomPropKeyPKUsers) ||
             event.deleteProperties.containsKey(roomPropKeyRequestID);
-
-    if ((hasPKPropsInDelete || !hasPKPropsInSet) &&
-        pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
-      await ZegoUIKit().muteUserAudioVideo(
-        _coreData.hostManager?.notifier.value?.id ?? '',
-        false,
-      );
-      await _mixer.stopPlayStream();
-
-      updatePKUsers([]);
-
-      if (isHost) {
-        _coreData.lastQuitRequestID = _coreData.currentRequestID;
-        _coreData.currentRequestID = '';
+    if (pkPropsInDelete) {
+      /// PK is over: the room properties that drive PK were explicitly deleted
+      /// (the host/backend ended the PK by removing them). Every participant
+      /// (viewer and host) must leave the PK view.
+      ///
+      /// Only an explicit delete (or an explicitly empty pk_users list below)
+      /// may end the PK. A partial update that merely lacks the PK keys (e.g.
+      /// the backend updating "host"/"r_id" or reordering on its own) must NOT
+      /// tear the ongoing PK down, otherwise the host layout would flip back to
+      /// the normal audio/video view and the other PK hosts would wrongly
+      /// appear as co-hosts.
+      if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+        await teardownPKFromRoomProperties();
       }
-      updatePKState(ZegoLiveStreamingPKBattleState.idle);
-
-      _coreData.events?.onStateUpdated?.call(
-        isLiving
-            ? ZegoLiveStreamingState.living
-            : ZegoLiveStreamingState.idle,
-      );
       return;
     }
 
@@ -761,14 +766,92 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       }
 
       final updatedPKUsers =
-          (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '')
-                  as List<dynamic>)
+          (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '') as List<dynamic>)
               .map(
                 (userJson) => ZegoLiveStreamingPKUser.fromJson(userJson),
               )
               .toList();
-      updatePKUsers(updatedPKUsers);
+
+      if (updatedPKUsers.isEmpty) {
+        /// PK is over: pk_users was overwritten with an empty list instead of
+        /// being deleted.
+        if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
+          await teardownPKFromRoomProperties();
+        }
+        return;
+      }
+
+      final processedPKUsers =
+          isHost ? reconcileHostPKUsers(updatedPKUsers) : updatedPKUsers;
+      updatePKUsers(processedPKUsers, fromRoomProps: true);
     }
+  }
+
+  Future<void> teardownPKFromRoomProperties() async {
+    await ZegoUIKit().muteUserAudioVideo(
+      _coreData.hostManager?.notifier.value?.id ?? '',
+      false,
+    );
+    await _mixer.stopPlayStream();
+
+    if (isHost) {
+      /// The async [disconnectedHostOnPKUsersChanged] chain will not run once
+      /// the pk state is reset to idle below, so tear the host side down
+      /// directly: stop playing other room streams and the mixer task.
+      for (final hostID in List.from(_coreData.playingHostIDs)) {
+        if (ZegoUIKit().getLocalUser().id == hostID) {
+          continue;
+        }
+        await ZegoUIKit().stopPlayAnotherRoomAudioVideo(hostID);
+      }
+      _coreData.playingHostIDs.clear();
+      await _mixer.stopTask();
+
+      _coreData.lastQuitRequestID = _coreData.currentRequestID;
+      _coreData.currentRequestID = '';
+    }
+
+    updatePKUsers([]);
+    updatePKState(ZegoLiveStreamingPKBattleState.idle);
+
+    _coreData.events?.onStateUpdated?.call(
+      isLiving
+          ? ZegoLiveStreamingState.living
+          : ZegoLiveStreamingState.idle,
+    );
+  }
+
+  /// Keep the local LIVE creator in an ongoing PK even when a backend snapshot
+  /// transiently omits it, and guarantee the local host's preview is rendered
+  /// first in its own room. Mirrors the backend's cumulative/ordering updates
+  /// without treating a partial snapshot as a reason to leave the PK.
+  List<ZegoLiveStreamingPKUser> reconcileHostPKUsers(
+    List<ZegoLiveStreamingPKUser> updatedPKUsers,
+  ) {
+    if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle &&
+        _coreData.currentRequestID.isEmpty) {
+      /// local host is not part of an ongoing PK, honor the backend list as-is
+      return updatedPKUsers;
+    }
+
+    final localUserID = ZegoUIKit().getLocalUser().id;
+    final reconciled = removeDuplicatePKUsers(updatedPKUsers);
+    final localIndex =
+        reconciled.indexWhere((e) => e.userInfo.id == localUserID);
+    if (-1 == localIndex) {
+      reconciled.insert(
+        0,
+        ZegoLiveStreamingPKUser(
+          userInfo: ZegoUIKit().getLocalUser(),
+          liveID: _coreData.roomID,
+        ),
+      );
+    } else if (0 != localIndex) {
+      final localUser = reconciled.removeAt(localIndex);
+      reconciled.insert(0, localUser);
+    }
+
+    return reconciled;
   }
 
   List<ZegoLiveStreamingPKUser> getAcceptedHostsInSession(

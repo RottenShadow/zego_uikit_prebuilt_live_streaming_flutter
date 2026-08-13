@@ -49,6 +49,12 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
   StreamSubscription? _waitingQueryRoomPropertiesSubscription;
   Timer? _heartBeatTimer;
 
+  /// Serializes room-attribute driven PK updates so a delete (PK end) and a
+  /// re-set (PK restart) can never interleave. This is a dedicated lock and is
+  /// independent from [_completer] used by [onPKUsersChanged] to avoid a
+  /// deadlock (room-attribute handling awaits PK-user handling).
+  Completer<void>? _roomAttributesCompleter;
+
   /// The mix audio/video loaded notifier that
   /// [onMixAudioVideoLoadStatusChanged] is currently attached to.
   ValueNotifier<bool>? _mixAudioVideoLoadedNotifier;
