@@ -10,6 +10,7 @@ import 'package:zego_uikit/zego_uikit.dart';
 
 // Project imports:
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/audio_video_view_foreground.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/components/camera_zoom.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/utils/pop_up_manager.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/config.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/controller.dart';
@@ -52,7 +53,8 @@ class ZegoLiveStreamingCentralAudioVideoView extends StatefulWidget {
 
 /// @nodoc
 class ZegoLiveStreamingCentralAudioVideoViewState
-    extends State<ZegoLiveStreamingCentralAudioVideoView> {
+    extends State<ZegoLiveStreamingCentralAudioVideoView>
+    with ZegoLiveStreamingCameraZoomMixin {
   /// had sort the host be first
   bool audioVideoContainerHostHadSorted = false;
   List<StreamSubscription<dynamic>?> subscriptions = [];
@@ -232,8 +234,12 @@ class ZegoLiveStreamingCentralAudioVideoViewState
                   )
                 : defaultAudioVideoContainer(withScreenSharing);
 
+        final zoomableAudioVideoContainer = withCameraPinchZoom(
+          audioVideoContainer,
+        );
+
         if (LiveStatus.living == liveStatusValue) {
-          children = audioVideoContainer;
+          children = zoomableAudioVideoContainer;
         } else if (LiveStatus.living != liveStatusValue &&
             null != widget.hostManager.notifier.value) {
           /// support local co-host view in host preparing
@@ -250,7 +256,7 @@ class ZegoLiveStreamingCentralAudioVideoViewState
                   }
 
                   /// local open camera or microphone
-                  return audioVideoContainer;
+                  return zoomableAudioVideoContainer;
                 },
               );
             },

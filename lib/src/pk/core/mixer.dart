@@ -29,6 +29,9 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
 
   ZegoLiveStreamingPKMixerLayout? _layout;
 
+  double _separatorWidth = 0;
+  int _separatorColorARGB = 0x000000;
+
   String get mixerID => _mixerID;
 
   ZegoLiveStreamingPKMixerLayout get layout =>
@@ -39,6 +42,8 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
 
   void init({
     required ZegoLiveStreamingPKMixerLayout? layout,
+    double separatorWidth = 0,
+    Color separatorColor = const Color(0xFF000000),
   }) async {
     if (_init) {
       return;
@@ -55,6 +60,8 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     _init = true;
 
     _layout = layout;
+    _separatorWidth = separatorWidth;
+    _separatorColorARGB = separatorColor.toARGB32();
 
     if (ZegoUIKit().getRoomStateStream().value.reason !=
         ZegoRoomStateChangedReason.Logined) {
@@ -248,6 +255,12 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     final rectList = layout.getRectList(
       hosts.length,
     );
+    final insetRectList = _separatorWidth > 0
+        ? insetSharedEdges(rectList, _separatorWidth)
+        : rectList;
+    if (_separatorWidth > 0) {
+      mixerTask.backgroundColor = _separatorColorARGB;
+    }
     for (int hostIndex = 0; hostIndex < hosts.length; ++hostIndex) {
       final host = hosts.elementAt(hostIndex);
       final contentType = mutedUsersNotifier.value.contains(host.userInfo.id)
@@ -258,7 +271,7 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
         ..contentType = contentType
         ..volume = 100
         ..renderMode = ZegoUIKitMixRenderMode.Fill
-        ..layout = rectList[hostIndex]
+        ..layout = insetRectList[hostIndex]
         ..soundLevelID = hostIndex;
       mixerTask.inputList.add(inputConfig);
     }

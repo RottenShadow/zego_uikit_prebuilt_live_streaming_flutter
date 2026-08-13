@@ -114,6 +114,10 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _mixer.init(
       layout: _coreData.prebuiltConfig?.pkBattle.mixerLayout,
+      separatorWidth: _coreData.prebuiltConfig?.pkBattle.separatorWidth ?? 0,
+      separatorColor:
+          _coreData.prebuiltConfig?.pkBattle.separatorColor ??
+          const Color(0xFF000000),
     );
     initEvents();
     listenPKUserChanged();

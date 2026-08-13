@@ -6,6 +6,7 @@ import 'package:zego_express_engine/zego_express_engine.dart';
 import 'package:zego_uikit/zego_uikit.dart';
 
 // Project imports:
+import 'package:zego_uikit_prebuilt_live_streaming/src/components/camera_zoom.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/config.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/components/common.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/defines.dart';
@@ -36,7 +37,8 @@ class ZegoLiveStreamingPKHostView extends StatefulWidget {
 }
 
 class ZegoLiveStreamingPKHostViewState
-    extends State<ZegoLiveStreamingPKHostView> {
+    extends State<ZegoLiveStreamingPKHostView>
+    with ZegoLiveStreamingCameraZoomMixin {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(builder: (context, constraints) {
@@ -46,12 +48,39 @@ class ZegoLiveStreamingPKHostViewState
         scale: constraints.maxWidth / mixerLayoutResolution.width,
       );
 
-      return Stack(
-        children: [
-          ...hostAudioVideoViews(rectList, constraints),
-        ],
+      final separatorConfig = widget.config.pkBattle;
+
+      return withCameraPinchZoom(
+        Stack(
+          children: [
+            if (separatorConfig.separatorWidth > 0)
+              Positioned.fill(
+                child: ColoredBox(color: separatorConfig.separatorColor),
+              ),
+            ...hostAudioVideoViews(rectList, constraints),
+            ...separatorViews(rectList),
+          ],
+        ),
       );
     });
+  }
+
+  List<Widget> separatorViews(List<Rect> rectList) {
+    final separatorConfig = widget.config.pkBattle;
+    if (separatorConfig.separatorWidth <= 0) return const [];
+
+    return separatorRects(
+      rectList,
+      thickness: separatorConfig.separatorWidth,
+      length: separatorConfig.separatorHeight,
+    )
+        .map(
+          (rect) => Positioned.fromRect(
+            rect: rect,
+            child: ColoredBox(color: separatorConfig.separatorColor),
+          ),
+        )
+        .toList();
   }
 
   List<Widget> hostAudioVideoViews(

@@ -115,6 +115,17 @@ class ZegoLiveStreamingControllerAudioVideoCameraImpl
     ZegoUIKit().useFrontFacingCamera(isFrontFacing);
   }
 
+  /// set the local camera zoom factor, the minimum value is 1.0 and the
+  /// maximum value is the return value of [getMaxZoomFactor].
+  Future<void> setZoomFactor(double factor) {
+    return ZegoUIKit().setCameraZoomFactor(factor);
+  }
+
+  /// get the maximum zoom factor supported by the local camera.
+  Future<double> getMaxZoomFactor() {
+    return ZegoUIKit().getCameraMaxZoomFactor();
+  }
+
   /// set video mirror mode
   void switchVideoMirroring(bool isVideoMirror) {
     ZegoUIKit().enableVideoMirroring(isVideoMirror);

@@ -1236,6 +1236,27 @@ class ZegoLiveStreamingPKBattleConfig {
   /// To add custom components on the bottom edge of the PKBattleView.
   ZegoLiveStreamingPKBattleViewBuilder? bottomBuilder;
 
+  /// The thickness of the separator line drawn between PK host views.
+  ///
+  /// Default value is 0, which disables the separator. When greater than 0, a
+  /// line of [separatorColor] is drawn between every pair of adjacent host
+  /// cells, so it adapts to any host count (2/3/4/...).
+  double separatorWidth;
+
+  /// The length of the separator line along the shared edge of the host views.
+  ///
+  /// Default value is 0, which makes the separator span the whole shared edge.
+  /// When greater than 0, the separator is drawn as a centered segment of this
+  /// length. Only applies to the local host view; the separator baked into the
+  /// mixed stream always spans the whole shared edge.
+  double separatorHeight;
+
+  /// The color of the separator line, which also fills the background layer
+  /// behind the PK host views.
+  ///
+  /// Default value is black.
+  Color separatorColor;
+
   ZegoLiveStreamingPKBattleConfig({
     this.userReconnectingSecond = 5,
     this.userDisconnectedSecond = 90,
@@ -1246,6 +1267,9 @@ class ZegoLiveStreamingPKBattleConfig {
     this.foregroundBuilder,
     this.topBuilder,
     this.bottomBuilder,
+    this.separatorWidth = 0,
+    this.separatorHeight = 0,
+    this.separatorColor = const Color(0xFF000000),
     @Deprecated('Use topPadding instead$deprecatedTipsV330')
     double? pKBattleViewTopPadding,
     @Deprecated('Use foregroundBuilder instead$deprecatedTipsV330')
@@ -1273,6 +1297,9 @@ class ZegoLiveStreamingPKBattleConfig {
         'foregroundBuilder:${foregroundBuilder != null}, '
         'topBuilder:${topBuilder != null}, '
         'bottomBuilder:${bottomBuilder != null}, '
+        'separatorWidth:$separatorWidth, '
+        'separatorHeight:$separatorHeight, '
+        'separatorColor:$separatorColor, '
         '}';
   }
 }
