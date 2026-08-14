@@ -214,4 +214,10 @@ class ZegoLiveStreamingControllerPKImpl
       isMute: isMute,
     );
   }
+
+  /// Swaps the PK mixer layout at runtime, re-baking the mixed stream with the
+  /// new cell positions and separator. A no-op while the layout is unchanged.
+  void updateMixerLayout(ZegoLiveStreamingPKMixerLayout layout) {
+    ZegoUIKitPrebuiltLiveStreamingPK.instance.updateMixerLayout(layout);
+  }
 }

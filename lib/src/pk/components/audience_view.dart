@@ -61,6 +61,7 @@ class ZegoLiveStreamingPKAudienceViewState
               if (null != mixView) mixView,
               ...background(rectList),
               ...foreground(rectList),
+              ...separatorViews(rectList),
               if (null == mixView)
                 Positioned.fill(
                   child: IgnorePointer(
@@ -82,6 +83,24 @@ class ZegoLiveStreamingPKAudienceViewState
         });
       },
     );
+  }
+
+  List<Widget> separatorViews(List<Rect> rectList) {
+    final separatorConfig = widget.config.pkBattle;
+    if (separatorConfig.separatorWidth <= 0) return const [];
+
+    return separatorRects(
+      rectList,
+      thickness: separatorConfig.separatorWidth,
+      length: separatorConfig.separatorHeight,
+    )
+        .map(
+          (rect) => Positioned.fromRect(
+            rect: rect,
+            child: ColoredBox(color: separatorConfig.separatorColor),
+          ),
+        )
+        .toList();
   }
 
   List<Widget> background(List<Rect> rectList) {

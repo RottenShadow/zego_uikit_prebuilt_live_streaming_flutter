@@ -25,6 +25,7 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/event/defines.dar
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/mixer.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/protocol.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 
 part 'completer.dart';
 
@@ -99,6 +100,12 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
   bool get isHost => _coreData.hostManager?.isLocalHost ?? false;
 
   bool get isLiving => _coreData.liveStatusNotifier.value == LiveStatus.living;
+
+  /// Swaps the layout used to bake the mixed stream, so a separator change
+  /// takes effect without leaving and re-entering the room.
+  void updateMixerLayout(ZegoLiveStreamingPKMixerLayout layout) {
+    _mixer.updateLayout(layout);
+  }
 
   BuildContext? get context => _coreData.contextQuery?.call();
 

@@ -27,6 +27,14 @@ abstract class ZegoLiveStreamingPKMixerLayout {
     );
   }
 
+  /// The thickness of the separator line baked between the mixed stream's
+  /// cells. 0 disables the separator. Override to customize.
+  double get separatorWidth => 0;
+
+  /// The color of the separator line baked between the mixed stream's cells.
+  /// Override to customize.
+  Color get separatorColor => const Color(0xFF000000);
+
   /// Get the coordinates of the user's video frame on the PK layout at position [hostCount].
   List<Rect> getRectList(
     int hostCount, {

@@ -1247,8 +1247,9 @@ class ZegoLiveStreamingPKBattleConfig {
   ///
   /// Default value is 0, which makes the separator span the whole shared edge.
   /// When greater than 0, the separator is drawn as a centered segment of this
-  /// length. Only applies to the local host view; the separator baked into the
-  /// mixed stream always spans the whole shared edge.
+  /// length. The separator baked into the mixed stream always spans the whole
+  /// shared edge; this length only trims the local overlay on the host and
+  /// audience views.
   double separatorHeight;
 
   /// The color of the separator line, which also fills the background layer

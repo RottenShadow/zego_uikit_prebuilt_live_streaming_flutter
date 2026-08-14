@@ -29,6 +29,9 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
 
   ZegoLiveStreamingPKMixerLayout? _layout;
 
+  /// a layout swap is pending in the microtask queue
+  bool _layoutDirty = false;
+
   double _separatorWidth = 0;
   int _separatorColorARGB = 0x000000;
 
@@ -69,6 +72,33 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     } else {
       _mixerID = '${ZegoUIKit().getRoom().id}__mix';
     }
+  }
+
+  /// Swaps the mixer layout and separator, re-running the mixer task so the
+  /// change takes effect on the mixed stream.
+  ///
+  /// Layouts are compared by `==`, so pushing an equal layout is a no-op and
+  /// concurrent pushes collapse into one task update.
+  void updateLayout(ZegoLiveStreamingPKMixerLayout layout) {
+    if (!_init || _layout == layout) {
+      return;
+    }
+
+    _layout = layout;
+    _separatorWidth = layout.separatorWidth;
+    _separatorColorARGB = layout.separatorColor.toARGB32();
+
+    if (_layoutDirty) {
+      return;
+    }
+    _layoutDirty = true;
+    scheduleMicrotask(() async {
+      _layoutDirty = false;
+      if (!_init || _currentPKHosts.isEmpty) {
+        return;
+      }
+      await updateTask(_currentPKHosts, force: true);
+    });
   }
 
   Future<void> uninit() async {

@@ -38,6 +38,7 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/core.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/services.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/swiping/config.dart';
 
 part 'controller/audio_video.dart';
