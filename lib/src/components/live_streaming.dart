@@ -26,6 +26,7 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/events.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/events.defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/internal/events.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/internal/lifecycle.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/minimizing/data.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/minimizing/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/minimizing/overlay_machine.dart';
@@ -104,6 +105,8 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
   bool isFromMinimizing = false;
 
+  late int _lifecycleToken;
+
   ZegoUIKitPrebuiltLiveStreamingEvents get events =>
       widget.events ?? ZegoUIKitPrebuiltLiveStreamingEvents();
 
@@ -141,29 +144,73 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
     isFromMinimizing = ZegoLiveStreamingMiniOverlayPageState.idle !=
         ZegoLiveStreamingMiniOverlayMachine().state;
 
-    if (!isFromMinimizing) {
-      ZegoLiveStreamingManagers().initPluginAndManagers(
-        widget.appID,
-        widget.appSign,
-        widget.token,
-        widget.userID,
-        widget.userName,
-        widget.liveID,
-        widget.config,
-        events,
-        popUpManager,
-        startedByLocalNotifier,
-        () {
-          return context;
-        },
-        onRoomLoginFailed: onRoomLoginFailed,
-      );
+    _lifecycleToken = ZegoLiveStreamingLifecycle.claim();
 
-      ZegoLiveStreamingManagers().plugins?.init();
+    final minimizeData = ZegoLiveStreamingMinimizeData(
+      appID: widget.appID,
+      appSign: widget.appSign,
+      liveID: widget.liveID,
+      userID: widget.userID,
+      userName: widget.userName,
+      config: widget.config,
+      events: events,
+      isPrebuiltFromMinimizing: isFromMinimizing,
+    );
+
+    if (!isFromMinimizing) {
+      ZegoLiveStreamingLifecycle.init(_lifecycleToken, () async {
+        _initControllerByPrebuilt(minimizeData: minimizeData);
+
+        await ZegoLiveStreamingManagers().initPluginAndManagers(
+          widget.appID,
+          widget.appSign,
+          widget.token,
+          widget.userID,
+          widget.userName,
+          widget.liveID,
+          widget.config,
+          events,
+          popUpManager,
+          startedByLocalNotifier,
+          () {
+            return context;
+          },
+          onRoomLoginFailed: onRoomLoginFailed,
+        );
+
+        ZegoLiveStreamingManagers().plugins?.init();
+
+        await initContext().then((_) {
+          ZegoLoggerService.logInfo(
+            'initContext done',
+            tag: 'live-streaming',
+            subTag: 'prebuilt',
+          );
+          contextInitNotifier.value = true;
+
+          initPermissions().then((_) {
+            if (mounted) {
+              ZegoUIKit()
+                ..turnCameraOn(widget.config.turnOnCameraWhenJoining)
+                ..turnMicrophoneOn(widget.config.turnOnMicrophoneWhenJoining);
+            }
+          });
+        }).catchError((e) {
+          ZegoLoggerService.logError(
+            'initContext exception:$e',
+            tag: 'live-streaming',
+            subTag: 'prebuilt',
+          );
+        });
+      });
     } else {
+      ZegoLiveStreamingLifecycle.adopt(_lifecycleToken);
+
       ZegoLiveStreamingManagers().updateContextQuery(() {
         return context;
       });
+
+      _initControllerByPrebuilt(minimizeData: minimizeData);
     }
     ZegoLiveStreamingToast.instance.init(
       enabled: widget.config.showToast,
@@ -176,19 +223,6 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
       ..add(
           ZegoUIKit().getMeRemovedFromRoomStream().listen(onMeRemovedFromRoom))
       ..add(ZegoUIKit().getErrorStream().listen(onUIKitError));
-
-    _initControllerByPrebuilt(
-      minimizeData: ZegoLiveStreamingMinimizeData(
-        appID: widget.appID,
-        appSign: widget.appSign,
-        liveID: widget.liveID,
-        userID: widget.userID,
-        userName: widget.userName,
-        config: widget.config,
-        events: events,
-        isPrebuiltFromMinimizing: isFromMinimizing,
-      ),
-    );
 
     ZegoLoggerService.logInfo(
       'mini machine state is ${ZegoLiveStreamingMiniOverlayMachine().state}',
@@ -204,29 +238,6 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
       contextInitNotifier.value = true;
       startedByLocalNotifier.value = true;
-    } else {
-      initContext().then((_) {
-        ZegoLoggerService.logInfo(
-          'initContext done',
-          tag: 'live-streaming',
-          subTag: 'prebuilt',
-        );
-        contextInitNotifier.value = true;
-
-        initPermissions().then((_) {
-          if (mounted) {
-            ZegoUIKit()
-              ..turnCameraOn(widget.config.turnOnCameraWhenJoining)
-              ..turnMicrophoneOn(widget.config.turnOnMicrophoneWhenJoining);
-          }
-        });
-      }).catchError((e) {
-        ZegoLoggerService.logError(
-          'initContext exception:$e',
-          tag: 'live-streaming',
-          subTag: 'prebuilt',
-        );
-      });
     }
 
     ZegoUIKitPrebuiltLiveStreamingController().minimize.hide();
@@ -241,15 +252,19 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
     WidgetsBinding.instance.removeObserver(this);
 
     if (!ZegoLiveStreamingMiniOverlayMachine().isMinimizing) {
-      if (ZegoUIKit().getScreenSharingStateNotifier().value) {
-        ZegoUIKit().stopSharingScreen();
-      }
+      ZegoLiveStreamingLifecycle.dispose(_lifecycleToken, () async {
+        if (ZegoUIKit().getScreenSharingStateNotifier().value) {
+          ZegoUIKit().stopSharingScreen();
+        }
 
-      ZegoLiveStreamingManagers().uninitPluginAndManagers().then((value) async {
-        uninitContext();
+        await ZegoLiveStreamingManagers().uninitPluginAndManagers(
+          token: _lifecycleToken,
+        );
+
+        await uninitContext();
+
+        _uninitControllerByPrebuilt();
       });
-
-      _uninitControllerByPrebuilt();
     } else {
       ZegoLoggerService.logInfo(
         'mini machine state is minimizing, room will not be leave',

@@ -19,6 +19,7 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/core/plugins.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/events.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/events.defines.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/internal/lifecycle.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/internal/pk_combine_notifier.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/core.dart';
 
@@ -32,7 +33,7 @@ class ZegoLiveStreamingManagers {
   static final ZegoLiveStreamingManagers _instance =
       ZegoLiveStreamingManagers._internal();
 
-  void initPluginAndManagers(
+  Future<void> initPluginAndManagers(
     int appID,
     String appSign,
     String token,
@@ -45,15 +46,18 @@ class ZegoLiveStreamingManagers {
     ValueNotifier<bool> startedByLocalNotifier,
     BuildContext Function()? contextQuery,{
     ZegoLiveStreamingLoginFailedEvent? onRoomLoginFailed,
-  }) {
+  }) async {
     if (_initialized) {
       ZegoLoggerService.logInfo(
-        'had init',
+        'had init, takeover, will uninit first',
         tag: 'live-streaming',
         subTag: 'core manager',
       );
 
-      return;
+      /// A previous session's managers are still alive (its stale teardown is
+      /// skipped by the lifecycle), so tear them down before rebuilding for
+      /// this session.
+      await uninitPluginAndManagers();
     }
 
     ZegoLoggerService.logInfo(
@@ -138,7 +142,18 @@ class ZegoLiveStreamingManagers {
     ZegoUIKitPrebuiltLiveStreamingPK().updateContextQuery(contextQuery);
   }
 
-  Future<void> uninitPluginAndManagers() async {
+  Future<void> uninitPluginAndManagers({int? token}) async {
+    if (null != token &&
+        !ZegoLiveStreamingLifecycle.owns(token)) {
+      ZegoLoggerService.logInfo(
+        'stale uninit, a newer session owns the sdk',
+        tag: 'live-streaming',
+        subTag: 'core manager',
+      );
+
+      return;
+    }
+
     ZegoLoggerService.logInfo(
       'uninit plugin and managers',
       tag: 'live-streaming',
