@@ -1,6 +1,0 @@
-dependency_overrides:
-  zego_uikit:
-    # path: ../zego_uikit_flutter
-    git:
-      url: https://github.com/RottenShadow/zego_uikit_flutter.git
-      ref: dev

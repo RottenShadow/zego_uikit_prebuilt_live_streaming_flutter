@@ -56,3 +56,10 @@ topics:
 linter:
   rules:
     public_member_api_docs: true
+
+dependency_overrides:
+  zego_uikit:
+    git:
+      url: https://github.com/RottenShadow/zego_uikit_flutter.git
+      ref: dev
+    # path: .shdw/packages/zego_uikit_flutter
