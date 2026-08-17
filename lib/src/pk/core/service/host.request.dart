@@ -66,6 +66,7 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     );
 
     var tempTargetHostUserIDs = List<String>.from(targetHostIDs);
+    var restartRequired = false;
     if (needAddToCurrentSession) {
       /// Extending an ongoing PK session (e.g. re-adding a host who just quit).
       /// Do NOT pre-filter with the plugin's local "in invitation" cache here:
@@ -79,6 +80,28 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
         'skip in-invitation pre-filter, '
         'will add target host user ids:$tempTargetHostUserIDs to '
         'request:$_coreData.currentRequestID',
+        tag: 'live-streaming-pk',
+        subTag: 'service, host, sendPKBattleRequest',
+      );
+
+      /// A host who was part of this session but is no longer a current member
+      /// (disconnected and left) cannot be re-added to the existing ZIM call:
+      /// the server rejects re-adding a former/terminal member to the same
+      /// callID (6000007). Restart the whole session on a fresh callID instead
+      /// of extending the old one.
+      final currentPKUserIDs =
+          _coreData.currentPKUsers.value.map((e) => e.userInfo.id).toList();
+      final previousPKUserIDs =
+          _coreData.previousPKUsers.value.map((e) => e.userInfo.id).toList();
+      restartRequired = tempTargetHostUserIDs.any(
+        (userID) =>
+            !currentPKUserIDs.contains(userID) &&
+            previousPKUserIDs.contains(userID),
+      );
+      ZegoLoggerService.logInfo(
+        'restartRequired:$restartRequired, '
+        'currentPKUsers:${_coreData.currentPKUsers.value}, '
+        'previousPKUsers:${_coreData.previousPKUsers.value}',
         tag: 'live-streaming-pk',
         subTag: 'service, host, sendPKBattleRequest',
       );
@@ -116,13 +139,20 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
 
     return (needAddToCurrentSession && _coreData.currentRequestID.isNotEmpty)
-        ? _addPKBattleRequest(
-            _coreData.currentRequestID,
-            tempTargetHostUserIDs,
-            timeout: timeout,
-            customData: customData,
-            isAutoAccept: isAutoAccept,
-          )
+        ? (restartRequired
+            ? _restartPKBattleForRejoin(
+                _coreData.currentRequestID,
+                tempTargetHostUserIDs,
+                timeout: timeout,
+                customData: customData,
+              )
+            : _addPKBattleRequest(
+                _coreData.currentRequestID,
+                tempTargetHostUserIDs,
+                timeout: timeout,
+                customData: customData,
+                isAutoAccept: isAutoAccept,
+              ))
         : _sendPKBattleRequest(
             tempTargetHostUserIDs,
             timeout: timeout,
@@ -131,17 +161,110 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
           );
   }
 
+  /// A former member of the ongoing session (disconnected and left) cannot be
+  /// re-added to the existing ZIM callID, so end the current session for all
+  /// participants and re-invite everyone - current members and the rejoining
+  /// host - on a fresh callID. Receivers recognize the re-invite as a
+  /// re-add of the just-ended session via [PKServiceRequestData.previousRequestID]
+  /// and auto-accept it.
+  Future<ZegoLiveStreamingPKServiceSendRequestResult> _restartPKBattleForRejoin(
+    String previousRequestID,
+    List<String> rejoiningHostUserIDs, {
+    int timeout = 60,
+    String customData = '',
+  }) async {
+    ZegoLoggerService.logInfo(
+      'restart pk battle for rejoin, '
+      'previousRequestID:$previousRequestID, '
+      'rejoiningHostUserIDs:$rejoiningHostUserIDs, ',
+      tag: 'live-streaming-pk',
+      subTag: 'service, host, restartPKBattleForRejoin',
+    );
+
+    /// End the current session for every participant. The local device also
+    /// receives onCallEnded and resets via [_onInvitationEnded], which clears
+    /// [currentRequestID] and sets [lastQuitRequestID] to the ended callID.
+    final endResult =
+        await ZegoUIKit().getSignalingPlugin().endAdvanceInvitation(
+              invitationID: previousRequestID,
+              data: jsonEncode({
+                'code': ZegoLiveStreamingPKBattleRejectCode.reject.index,
+                'invitation_id': previousRequestID,
+                'invitee_name': ZegoUIKit().getLocalUser().name,
+              }),
+            );
+    if (null != endResult.error) {
+      ZegoLoggerService.logError(
+        'restart pk battle for rejoin, '
+        'end previous session failed, '
+        'previousRequestID:$previousRequestID, '
+        'error:${endResult.error}',
+        tag: 'live-streaming-pk',
+        subTag: 'service, host, restartPKBattleForRejoin',
+      );
+    }
+
+    /// Re-invite the remaining members of the ended session plus the
+    /// rejoining host(s) on a fresh callID, auto-accepting on the receiver
+    /// side so everyone converges on the new session.
+    final currentPKUsers = List<ZegoLiveStreamingPKUser>.from(
+      _coreData.currentPKUsers.value,
+    );
+    var restartInvitees = currentPKUsers
+        .map((e) => e.userInfo.id)
+        .where((userID) => userID != ZegoUIKit().getLocalUser().id)
+        .toList();
+    for (final userID in rejoiningHostUserIDs) {
+      if (!restartInvitees.contains(userID)) {
+        restartInvitees.add(userID);
+      }
+    }
+    restartInvitees.removeWhere(
+      (userID) => userID == ZegoUIKit().getLocalUser().id,
+    );
+    if (restartInvitees.isEmpty) {
+      ZegoLoggerService.logError(
+        'restart pk battle for rejoin, '
+        'no one to re-invite, '
+        'currentPKUsers:${_coreData.currentPKUsers.value}, '
+        'rejoiningHostUserIDs:$rejoiningHostUserIDs',
+        tag: 'live-streaming-pk',
+        subTag: 'service, host, restartPKBattleForRejoin',
+      );
+
+      return ZegoLiveStreamingPKServiceSendRequestResult(
+        requestID: previousRequestID,
+        errorUserIDs: rejoiningHostUserIDs,
+        error: PlatformException(
+          code: '-1',
+          message: 'restart pk battle failed, '
+              'no one to re-invite',
+        ),
+      );
+    }
+
+    return _sendPKBattleRequest(
+      restartInvitees,
+      timeout: timeout,
+      customData: customData,
+      isAutoAccept: true,
+      previousRequestID: previousRequestID,
+    );
+  }
+
   Future<ZegoLiveStreamingPKServiceSendRequestResult> _sendPKBattleRequest(
     List<String> targetHostUserIDs, {
     int timeout = 60,
     String customData = '',
     bool isAutoAccept = false,
+    String? previousRequestID,
   }) async {
     ZegoLoggerService.logInfo(
       'targetHostUserIDs:$targetHostUserIDs, '
       'timeout:$timeout, '
       'isAutoAccept:$isAutoAccept, '
-      'customData:$customData, ',
+      'customData:$customData, '
+      'previousRequestID:$previousRequestID, ',
       tag: 'live-streaming-pk',
       subTag: 'service, host, sendPKBattleRequest',
     );
@@ -161,6 +284,7 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
                   liveID: _coreData.roomID,
                   isAutoAccept: isAutoAccept,
                   customData: customData,
+                  previousRequestID: previousRequestID,
                 ),
               ),
             );
