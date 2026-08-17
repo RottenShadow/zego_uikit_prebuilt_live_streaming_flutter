@@ -772,9 +772,10 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
               )
               .toList();
 
-      if (updatedPKUsers.isEmpty) {
-        /// PK is over: pk_users was overwritten with an empty list instead of
-        /// being deleted.
+      if (updatedPKUsers.length < 2) {
+        /// PK is over: a PK requires at least 2 hosts. pk_users was either
+        /// overwritten with an empty list instead of being deleted, or
+        /// transiently holds a single host (only the local host remains).
         if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
           await teardownPKFromRoomProperties();
         }
