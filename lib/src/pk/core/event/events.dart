@@ -545,7 +545,6 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           customData: initiatorPKRequestData.customData,
           requestID: requestID,
           sessionHosts: sessionHosts,
-          previousRequestID: initiatorPKRequestData.previousRequestID,
         );
       }).listen(_onInvitationReceived))
       ..add(ZegoUIKit()
@@ -925,15 +924,10 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     /// Note: [event.requestID] is compared BEFORE [_coreData.currentRequestID]
     /// is overwritten below. [lastQuitRequestID] covers a re-add arriving while
     /// the host is still tearing the just-left session down, at which point
-    /// [currentRequestID] has already been cleared. [event.previousRequestID]
-    /// covers a session restart: the incoming request replaces the session the
-    /// host is in / just left with a fresh callID.
+    /// [currentRequestID] has already been cleared.
     final isReAddToCurrentSession = event.requestID.isNotEmpty &&
         (event.requestID == _coreData.currentRequestID ||
-            event.requestID == _coreData.lastQuitRequestID ||
-            (event.previousRequestID?.isNotEmpty ?? false) &&
-                (event.previousRequestID == _coreData.currentRequestID ||
-                    event.previousRequestID == _coreData.lastQuitRequestID));
+            event.requestID == _coreData.lastQuitRequestID);
 
     if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle &&
         !isReAddToCurrentSession) {
@@ -1241,22 +1235,6 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       tag: 'live-streaming-pk',
       subTag: 'pk event',
     );
-
-    /// Ignore a stale end for a session that has already been replaced by a
-    /// new one (e.g. the async callback of a session-restart's endAdvanceInvitation
-    /// landing after the fresh session was established): tearing down now
-    /// would clear the active session's requestID and PK users.
-    if (_coreData.currentRequestID.isNotEmpty &&
-        _coreData.currentRequestID != event.requestID) {
-      ZegoLoggerService.logInfo(
-        'on invitation ended, '
-        'stale end, currentRequestID:${_coreData.currentRequestID}, '
-        'event.requestID:${event.requestID}, ignore',
-        tag: 'live-streaming-pk',
-        subTag: 'pk event',
-      );
-      return;
-    }
 
     updatePKUsers([]);
 

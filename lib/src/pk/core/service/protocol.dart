@@ -8,7 +8,6 @@ class PKServiceRequestData {
     required this.liveID,
     required this.isAutoAccept,
     required this.customData,
-    this.previousRequestID,
   });
 
   final ZegoUIKitUser inviter;
@@ -17,19 +16,12 @@ class PKServiceRequestData {
   final bool isAutoAccept;
   final String customData;
 
-  /// When a session is restarted (e.g. re-inviting a host who previously
-  /// disconnected and left it), this holds the callID of the session being
-  /// replaced, so receivers can recognize the invite as a re-add of a session
-  /// they are in / just left instead of treating it as a conflicting PK.
-  final String? previousRequestID;
-
   Map<String, dynamic> toJson() => {
         'inviter': inviter,
         'invitees': invitees,
         'live_id': liveID,
         'auto_accept': isAutoAccept,
         'custom_data': customData,
-        if (null != previousRequestID) 'previous_request_id': previousRequestID,
       };
 
   factory PKServiceRequestData.fromJson(Map<String, dynamic> json) {
@@ -41,7 +33,6 @@ class PKServiceRequestData {
       liveID: json['live_id'],
       isAutoAccept: json['auto_accept'],
       customData: json['custom_data'],
-      previousRequestID: json['previous_request_id'],
     );
   }
 }
