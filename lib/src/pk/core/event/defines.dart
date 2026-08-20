@@ -15,15 +15,10 @@ class ZegoLiveStreamingIncomingPKBattleRequestReceivedEvent {
     required this.startTimestampSecond,
     required this.timeoutSecond,
     this.sessionHosts = const [],
-    this.previousRequestID,
   });
 
   /// The ID of the current PK session
   final String requestID;
-
-  /// When this request restarts a just-ended session (re-inviting a host who
-  /// previously left it), the callID of the session being replaced.
-  final String? previousRequestID;
 
   /// timestamp(second) of PK start
   final int startTimestampSecond;
@@ -48,7 +43,6 @@ class ZegoLiveStreamingIncomingPKBattleRequestReceivedEvent {
       'isAutoAccept:$isAutoAccept, '
       'customData:$customData, '
       'startTimestampSecond:$startTimestampSecond, '
-      'previousRequestID:$previousRequestID, '
       'sessionHosts:$sessionHosts, '
       '}';
 }
