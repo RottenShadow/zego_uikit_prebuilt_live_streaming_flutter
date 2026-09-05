@@ -191,6 +191,20 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       subTag: 'service, connect-users, connectedHostOnPKUsersChanged',
     );
 
+    if (fromRoomProps &&
+        _isUninvitedReAdd(
+          localState: pkStateNotifier.value,
+          currentRequestID: _coreData.currentRequestID,
+          updatedPKUsers: _coreData.currentPKUsers.value,
+        )) {
+      ZegoLoggerService.logInfo(
+        'connectedHostOnPKUsersChanged, dropping uninvited re-add for local user',
+        tag: 'live-streaming-pk',
+        subTag: 'service, connect-users, connectedHostOnPKUsersChanged',
+      );
+      return;
+    }
+
     if (!isInPK) {
       /// not in pk now, init pk
       updatePKState(ZegoLiveStreamingPKBattleState.inPK);
@@ -541,4 +555,35 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       );
     }
   }
+}
+
+/// ponytail: defend against backend misfires that re-add the local host to a
+/// `pk_users` echo after they quit. Returns true when the local user is named
+/// in [updatedPKUsers] but is NOT in the signaling invitation set (i.e. was
+/// never actually invited/accepted into the active [currentRequestID]).
+bool _isUninvitedReAdd({
+  required ZegoLiveStreamingPKBattleState localState,
+  required String currentRequestID,
+  required List<ZegoLiveStreamingPKUser> updatedPKUsers,
+}) {
+  if (localState != ZegoLiveStreamingPKBattleState.idle) {
+    return false;
+  }
+  if (currentRequestID.isEmpty) {
+    return true;
+  }
+  final localID = ZegoUIKit().getLocalUser().id;
+  if (!updatedPKUsers.any((u) => u.userInfo.id == localID)) {
+    return false;
+  }
+  final invitees = ZegoUIKit()
+      .getSignalingPlugin()
+      .getAdvanceInvitees(currentRequestID);
+  final locallyInvited = invitees.any(
+    (u) =>
+        u.userID == localID &&
+        (u.state == AdvanceInvitationState.waiting ||
+            u.state == AdvanceInvitationState.accepted),
+  );
+  return !locallyInvited;
 }

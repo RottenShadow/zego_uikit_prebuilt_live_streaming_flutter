@@ -784,6 +784,19 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
       final processedPKUsers =
           isHost ? reconcileHostPKUsers(updatedPKUsers) : updatedPKUsers;
+      if (isHost &&
+          _isUninvitedReAdd(
+            localState: pkStateNotifier.value,
+            currentRequestID: _coreData.currentRequestID,
+            updatedPKUsers: processedPKUsers,
+          )) {
+        ZegoLoggerService.logInfo(
+          'onRoomAttributesUpdated, dropping uninvited re-add for local user',
+          tag: 'live-streaming-pk',
+          subTag: 'pk event',
+        );
+        return;
+      }
       updatePKUsers(processedPKUsers, fromRoomProps: true);
     }
   }
