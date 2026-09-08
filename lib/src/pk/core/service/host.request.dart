@@ -441,19 +441,27 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _coreData.clearRequestReceivedEventInMinimizing();
 
-    /// during the dialog box stay or somethings delay,
-    /// the data will be updated,
-    /// and here we need to obtain the latest data.
+    /// query latest invitation map state right before writing/accepting
+    final preAcceptHostsFromMap = getPKUsersFromInvitationMap(requestID);
+
     final sessionHosts = getAcceptedHostsInSession(requestID, ignoreUserIDs: [
       ZegoUIKit().getLocalUser().id,
       targetHost.userInfo.id,
     ]);
+    for (final hostFromMap in preAcceptHostsFromMap) {
+      if (hostFromMap.userInfo.id != ZegoUIKit().getLocalUser().id &&
+          hostFromMap.userInfo.id != targetHost.userInfo.id &&
+          !sessionHosts.any((h) => h.userInfo.id == hostFromMap.userInfo.id)) {
+        sessionHosts.add(hostFromMap);
+      }
+    }
     final sessionInitiator =
         ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(requestID);
     if (null != sessionInitiator &&
         sessionInitiator.userID != ZegoUIKit().getLocalUser().id &&
         sessionInitiator.extendedData.isNotEmpty &&
-        targetHost.userInfo.id != sessionInitiator.userID) {
+        targetHost.userInfo.id != sessionInitiator.userID &&
+        !sessionHosts.any((h) => h.userInfo.id == sessionInitiator.userID)) {
       try {
         final initiatorPKRequestData = PKServiceRequestData.fromJson(
           jsonDecode(sessionInitiator.extendedData) as Map<String, dynamic>,
@@ -520,17 +528,16 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
 
     updatePKState(ZegoLiveStreamingPKBattleState.loading);
-    final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
-    final usersToSet = pkUsersFromMap.isNotEmpty
-        ? pkUsersFromMap
-        : [
-            ZegoLiveStreamingPKUser(
-              userInfo: ZegoUIKit().getLocalUser(),
-              liveID: _coreData.roomID,
-            ),
-            targetHost,
-            ...sessionHosts,
-          ];
+    final postAcceptHostsFromMap = getPKUsersFromInvitationMap(requestID);
+    final usersToSet = removeDuplicatePKUsers([
+      ZegoLiveStreamingPKUser(
+        userInfo: ZegoUIKit().getLocalUser(),
+        liveID: _coreData.roomID,
+      ),
+      targetHost,
+      ...sessionHosts,
+      ...postAcceptHostsFromMap,
+    ]);
     updatePKUsers(usersToSet);
 
     return const ZegoLiveStreamingPKServiceResult();
