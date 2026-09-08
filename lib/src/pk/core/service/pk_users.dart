@@ -50,6 +50,100 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     return distinctPKUsers;
   }
 
+  ZegoLiveStreamingPKUser? parsePKUserFromSignalingUser(
+    AdvanceInvitationUser signalingUser,
+  ) {
+    final localUser = ZegoUIKit().getLocalUser();
+    if (signalingUser.userID == localUser.id) {
+      return ZegoLiveStreamingPKUser(
+        userInfo: localUser,
+        liveID: _coreData.roomID,
+      );
+    }
+
+    String name = signalingUser.userID;
+    String liveID = '';
+
+    if (signalingUser.extendedData.isNotEmpty) {
+      try {
+        final requestData = PKServiceRequestData.fromJson(
+          jsonDecode(signalingUser.extendedData) as Map<String, dynamic>,
+        );
+        if (requestData.inviter.name.isNotEmpty) {
+          name = requestData.inviter.name;
+        }
+        if (requestData.liveID.isNotEmpty) {
+          liveID = requestData.liveID;
+        }
+      } catch (_) {
+        final hostInfo = _getSessionHostNameAndLiveIDFromExtendedData(
+          signalingUser.extendedData,
+        );
+        if (hostInfo.name.isNotEmpty) {
+          name = hostInfo.name;
+        }
+        if (hostInfo.fromLiveID.isNotEmpty) {
+          liveID = hostInfo.fromLiveID;
+        }
+      }
+    }
+
+    return ZegoLiveStreamingPKUser(
+      userInfo: ZegoUIKitUser(id: signalingUser.userID, name: name),
+      liveID: liveID,
+    );
+  }
+
+  /// Rebuilds the current PK users list directly from the Signaling Plugin's
+  /// active Advance Invitation Map. This is the source-of-truth for PK hosts
+  /// in a session [requestID].
+  List<ZegoLiveStreamingPKUser> getPKUsersFromInvitationMap(String requestID) {
+    if (requestID.isEmpty) {
+      return [];
+    }
+
+    final pkUsers = <ZegoLiveStreamingPKUser>[];
+
+    // 1. Check Initiator
+    final initiator =
+        ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(requestID);
+    if (initiator != null &&
+        initiator.state != AdvanceInvitationState.rejected) {
+      final user = parsePKUserFromSignalingUser(initiator);
+      if (user != null) {
+        pkUsers.add(user);
+      }
+    }
+
+    // 2. Check Accepted Invitees
+    final invitees =
+        ZegoUIKit().getSignalingPlugin().getAdvanceInvitees(requestID);
+    for (final invitee in invitees) {
+      if (invitee.state == AdvanceInvitationState.accepted) {
+        final user = parsePKUserFromSignalingUser(invitee);
+        if (user != null) {
+          pkUsers.add(user);
+        }
+      }
+    }
+
+    // Deduplicate
+    final distinctUsers = removeDuplicatePKUsers(pkUsers);
+
+    // If local user is host and in PK, ensure local host is first
+    if (isHost) {
+      final localID = ZegoUIKit().getLocalUser().id;
+      final localIdx =
+          distinctUsers.indexWhere((u) => u.userInfo.id == localID);
+      if (localIdx > 0) {
+        final localUser = distinctUsers.removeAt(localIdx);
+        distinctUsers.insert(0, localUser);
+      }
+    }
+
+    return distinctUsers;
+  }
+
   void updatePKUsers(
     List<ZegoLiveStreamingPKUser> tempUpdatedPKUsers, {
     bool fromRoomProps = false,
@@ -367,7 +461,9 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
         keys: [roomPropKeyRequestID, roomPropKeyHost, roomPropKeyPKUsers],
       );
 
-      await quitPKBattle(requestID: _coreData.currentRequestID);
+      if (_coreData.currentRequestID.isNotEmpty) {
+        await quitPKBattle(requestID: _coreData.currentRequestID);
+      }
 
       updatePKState(ZegoLiveStreamingPKBattleState.idle);
     }

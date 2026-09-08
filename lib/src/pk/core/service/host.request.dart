@@ -520,14 +520,18 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
 
     updatePKState(ZegoLiveStreamingPKBattleState.loading);
-    updatePKUsers([
-      ZegoLiveStreamingPKUser(
-        userInfo: ZegoUIKit().getLocalUser(),
-        liveID: _coreData.roomID,
-      ),
-      targetHost,
-      ...sessionHosts,
-    ]);
+    final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
+    final usersToSet = pkUsersFromMap.isNotEmpty
+        ? pkUsersFromMap
+        : [
+            ZegoLiveStreamingPKUser(
+              userInfo: ZegoUIKit().getLocalUser(),
+              liveID: _coreData.roomID,
+            ),
+            targetHost,
+            ...sessionHosts,
+          ];
+    updatePKUsers(usersToSet);
 
     return const ZegoLiveStreamingPKServiceResult();
   }

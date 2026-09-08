@@ -18,7 +18,6 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/inner_text.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/internal/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/internal/reporter.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/minimizing/overlay_machine.dart';
-import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/core.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/data.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/event/defines.dart';
@@ -44,7 +43,7 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
 
   bool _eventInitialized = false;
   final List<StreamSubscription<dynamic>?> _eventSubscriptions = [];
-  Completer<void>? _completer;
+  final List<Completer<void>> _completerQueue = [];
 
   late ZegoUIKitPrebuiltLiveStreamingPKData _coreData;
   StreamSubscription? _waitingQueryRoomPropertiesSubscription;
@@ -52,9 +51,9 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
 
   /// Serializes room-attribute driven PK updates so a delete (PK end) and a
   /// re-set (PK restart) can never interleave. This is a dedicated lock and is
-  /// independent from [_completer] used by [onPKUsersChanged] to avoid a
+  /// independent from [_completerQueue] used by [onPKUsersChanged] to avoid a
   /// deadlock (room-attribute handling awaits PK-user handling).
-  Completer<void>? _roomAttributesCompleter;
+  final List<Completer<void>> _roomAttributesCompleterQueue = [];
 
   /// The mix audio/video loaded notifier that
   /// [onMixAudioVideoLoadStatusChanged] is currently attached to.

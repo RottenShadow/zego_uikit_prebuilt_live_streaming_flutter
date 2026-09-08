@@ -181,6 +181,26 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       return;
     }
 
+    final requestID = event.invitationID;
+    if (_coreData.currentRequestID.isNotEmpty &&
+        requestID != _coreData.currentRequestID &&
+        requestID != _coreData.lastQuitRequestID) {
+      ZegoLoggerService.logInfo(
+        'onInvitationUserStateChanged: ignoring stale requestID:$requestID (active:${_coreData.currentRequestID})',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+      return;
+    }
+
+    final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
+    if (pkUsersFromMap.length >= 2) {
+      if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
+        updatePKState(ZegoLiveStreamingPKBattleState.loading);
+      }
+      updatePKUsers(pkUsersFromMap);
+    }
+
     for (var userInfo in event.callUserList) {
       if (userInfo.userID == ZegoUIKit().getLocalUser().id) {
         _onLocalInvitationUserStateChanged(event.invitationID, userInfo);
@@ -301,14 +321,17 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           ));
         } else {
           /// invitees(other room's host) accept, update connected users
+          final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
           updatePKUsers(
-            List.from(_coreData.currentPKUsers.value)
-              ..add(
-                ZegoLiveStreamingPKUser(
-                  userInfo: fromHost,
-                  liveID: fromLiveID,
-                ),
-              ),
+            pkUsersFromMap.isNotEmpty
+                ? pkUsersFromMap
+                : (List.from(_coreData.currentPKUsers.value)
+                  ..add(
+                    ZegoLiveStreamingPKUser(
+                      userInfo: fromHost,
+                      liveID: fromLiveID,
+                    ),
+                  )),
           );
         }
         break;
@@ -765,6 +788,20 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         );
       }
 
+      if (_coreData.currentRequestID.isNotEmpty) {
+        final invitationPKUsers =
+            getPKUsersFromInvitationMap(_coreData.currentRequestID);
+        if (invitationPKUsers.length >= 2) {
+          ZegoLoggerService.logInfo(
+            'onRoomAttributesUpdated: using invitation map hosts ($invitationPKUsers) instead of room attributes snapshot',
+            tag: 'live-streaming-pk',
+            subTag: 'pk event',
+          );
+          updatePKUsers(invitationPKUsers, fromRoomProps: true);
+          return;
+        }
+      }
+
       final updatedPKUsers =
           (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '') as List<dynamic>)
               .map(
@@ -1087,31 +1124,39 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     /// it. Using `isInPK` here would let a concurrent second accept land while
     /// still `loading` and overwrite the first host, dropping them from the
     /// layout.
+    final pkUsersFromMap = getPKUsersFromInvitationMap(event.requestID);
+
     if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
       /// first invitee(other room's host) accept, start pk, update layout
 
       updatePKState(ZegoLiveStreamingPKBattleState.loading);
 
-      updatePKUsers([
-        ZegoLiveStreamingPKUser(
-          userInfo: ZegoUIKit().getLocalUser(),
-          liveID: _coreData.roomID,
-        ),
-        ZegoLiveStreamingPKUser(
-          userInfo: event.fromHost,
-          liveID: event.fromLiveID,
-        ),
-      ]);
+      updatePKUsers(
+        pkUsersFromMap.isNotEmpty
+            ? pkUsersFromMap
+            : [
+                ZegoLiveStreamingPKUser(
+                  userInfo: ZegoUIKit().getLocalUser(),
+                  liveID: _coreData.roomID,
+                ),
+                ZegoLiveStreamingPKUser(
+                  userInfo: event.fromHost,
+                  liveID: event.fromLiveID,
+                ),
+              ],
+      );
     } else {
       /// invitees(other room's host) accept, update connected users
       updatePKUsers(
-        List.from(_coreData.currentPKUsers.value)
-          ..add(
-            ZegoLiveStreamingPKUser(
-              userInfo: event.fromHost,
-              liveID: event.fromLiveID,
-            ),
-          ),
+        pkUsersFromMap.isNotEmpty
+            ? pkUsersFromMap
+            : (List.from(_coreData.currentPKUsers.value)
+              ..add(
+                ZegoLiveStreamingPKUser(
+                  userInfo: event.fromHost,
+                  liveID: event.fromLiveID,
+                ),
+              )),
       );
     }
 
@@ -1278,11 +1323,25 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       subTag: 'pk event',
     );
 
+    if (_coreData.currentRequestID.isNotEmpty &&
+        event.requestID != _coreData.currentRequestID &&
+        event.requestID != _coreData.lastQuitRequestID) {
+      ZegoLoggerService.logInfo(
+        '_onInvitationUserOffline: ignoring stale requestID:${event.requestID}',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+      return;
+    }
+
+    final pkUsersFromMap = getPKUsersFromInvitationMap(event.requestID);
     updatePKUsers(
-      List.from(_coreData.currentPKUsers.value)
-        ..removeWhere(
-          (pkUser) => pkUser.userInfo.id == event.fromHost.id,
-        ),
+      pkUsersFromMap.isNotEmpty
+          ? pkUsersFromMap
+          : (List.from(_coreData.currentPKUsers.value)
+            ..removeWhere(
+              (pkUser) => pkUser.userInfo.id == event.fromHost.id,
+            )),
     );
 
     _checkNullToIdle(event.requestID);
@@ -1300,11 +1359,25 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       subTag: 'pk event',
     );
 
+    if (_coreData.currentRequestID.isNotEmpty &&
+        event.requestID != _coreData.currentRequestID &&
+        event.requestID != _coreData.lastQuitRequestID) {
+      ZegoLoggerService.logInfo(
+        '_onInvitationUserQuit: ignoring stale requestID:${event.requestID}',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+      return;
+    }
+
+    final pkUsersFromMap = getPKUsersFromInvitationMap(event.requestID);
     updatePKUsers(
-      List.from(_coreData.currentPKUsers.value)
-        ..removeWhere(
-          (pkUser) => pkUser.userInfo.id == event.fromHost.id,
-        ),
+      pkUsersFromMap.isNotEmpty
+          ? pkUsersFromMap
+          : (List.from(_coreData.currentPKUsers.value)
+            ..removeWhere(
+              (pkUser) => pkUser.userInfo.id == event.fromHost.id,
+            )),
     );
 
     await _checkNullToIdle(event.requestID);
