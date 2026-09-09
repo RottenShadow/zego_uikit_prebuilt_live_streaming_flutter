@@ -399,27 +399,34 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       );
     }
 
-    /// update room property, notify the host info && layout
+    /// Publish the authoritative PK layout to THIS host's own room so its
+    /// own audience (who cannot see the invitation map) renders the PK.
     ///
-    /// Skip echoing when this change was driven by a room-properties snapshot
-    /// (backend or another host): the source has already published it, and
-    /// re-writing it back with `isForce: true` only spams the room attributes
-    /// (and can loop with the backend), which is the root of the PK UI
-    /// flicker. Locally-initiated changes (invitation accepted/quit) still
-    /// echo to notify the audience.
-    if (!fromRoomProps) {
-      await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
-            roomID: _coreData.roomID,
-            roomProperties: {
-              roomPropKeyRequestID: _coreData.currentRequestID,
-              roomPropKeyHost: ZegoUIKit().getLocalUser().id,
-              roomPropKeyPKUsers: jsonEncode(
-                _coreData.currentPKUsers.value,
-              )
-            },
-            isForce: true,
-            isUpdateOwner: true,
-          );
+    /// Every connected host writes only to its own room (_coreData.roomID),
+    /// so no two hosts ever contend on the same room attribute. The value is
+    /// always read from the invitation map (getPKUsersFromInvitationMap) at
+    /// write time, NOT from the _coreData.currentPKUsers snapshot, so a
+    /// locally-initiated change (invitation accepted/quit/offline) can never
+    /// echo a stale or partial list. Updates driven by a room-attributes
+    /// snapshot (fromRoomProps == true) must NOT echo back - the source has
+    /// already published them and re-writing with isForce: true only spams
+    /// the room attributes (and can loop with the backend).
+    if (!fromRoomProps && _coreData.currentRequestID.isNotEmpty) {
+      final fullPKUsers = getPKUsersFromInvitationMap(
+        _coreData.currentRequestID,
+      );
+      if (fullPKUsers.length >= 2) {
+        await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
+          roomID: _coreData.roomID,
+          roomProperties: {
+            roomPropKeyRequestID: _coreData.currentRequestID,
+            roomPropKeyHost: ZegoUIKit().getLocalUser().id,
+            roomPropKeyPKUsers: jsonEncode(fullPKUsers),
+          },
+          isForce: true,
+          isUpdateOwner: true,
+        );
+      }
     }
 
     if (onlyLocalInPK && !fromRoomProps) {
