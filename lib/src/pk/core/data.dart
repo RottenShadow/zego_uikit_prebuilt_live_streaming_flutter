@@ -1,6 +1,3 @@
-// Dart imports:
-import 'dart:async';
-
 // Flutter imports:
 import 'package:flutter/cupertino.dart';
 
@@ -88,8 +85,6 @@ class ZegoUIKitPrebuiltLiveStreamingPKData
       subTag: 'service data',
     );
 
-    roomPropsWriteTimer?.cancel();
-    roomPropsWriteTimer = null;
     invitationDataCache.clear();
     quitRequestUserIDs.clear();
 
@@ -157,8 +152,6 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServiceData {
   bool showOutgoingPKBattleRequestRejectedDialog = false;
 
   List<String> playingHostIDs = [];
-
-  Timer? roomPropsWriteTimer;
 
   /// Cached invitation data (PKServiceRequestData JSON) per requestID.
   /// Used as fallback when the initiator's extendedData is empty on remote

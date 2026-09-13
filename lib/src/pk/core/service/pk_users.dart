@@ -326,6 +326,38 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       ZegoUIKit().turnMicrophoneOn(isMicrophoneOn, muteMode: true);
     }
 
+    /// Publish the authoritative PK layout to THIS host's own room FIRST,
+    /// before starting the mixer or streams. This ensures all hosts and
+    /// their audiences have consistent room attributes from the moment the
+    /// mix starts playing.
+    if (!fromRoomProps && _coreData.currentRequestID.isNotEmpty) {
+      final fullPKUsers = getPKUsersFromInvitationMap(
+        _coreData.currentRequestID,
+      );
+      if (fullPKUsers.length >= 2) {
+        final localID = ZegoUIKit().getLocalUser().id;
+        final localIdx =
+            fullPKUsers.indexWhere((u) => u.userInfo.id == localID);
+        if (localIdx > 0) {
+          final localUser = fullPKUsers.removeAt(localIdx);
+          fullPKUsers.insert(0, localUser);
+        }
+        final pkUsersToWrite = List<ZegoLiveStreamingPKUser>.from(fullPKUsers);
+        final requestID = _coreData.currentRequestID;
+        final roomID = _coreData.roomID;
+        await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
+              roomID: roomID,
+              roomProperties: {
+                roomPropKeyRequestID: requestID,
+                roomPropKeyHost: ZegoUIKit().getLocalUser().id,
+                roomPropKeyPKUsers: jsonEncode(pkUsersToWrite),
+              },
+              isForce: true,
+              isUpdateOwner: true,
+            );
+      }
+    }
+
     /// update mixer layout
     await _mixer.updateTask(List.from(_coreData.currentPKUsers.value));
 
@@ -416,52 +448,6 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       );
     }
 
-    /// Publish the authoritative PK layout to THIS host's own room so its
-    /// own audience (who cannot see the invitation map) renders the PK.
-    ///
-    /// Every connected host writes only to its own room (_coreData.roomID),
-    /// so no two hosts ever contend on the same room attribute. The value is
-    /// always read from the invitation map (getPKUsersFromInvitationMap) at
-    /// write time, NOT from the _coreData.currentPKUsers snapshot, so a
-    /// locally-initiated change (invitation accepted/quit/offline) can never
-    /// echo a stale or partial list. Updates driven by a room-attributes
-    /// snapshot (fromRoomProps == true) must NOT echo back - the source has
-    /// already published them and re-writing with isForce: true only spams
-    /// the room attributes (and can loop with the backend).
-    if (!fromRoomProps && _coreData.currentRequestID.isNotEmpty) {
-      final fullPKUsers = getPKUsersFromInvitationMap(
-        _coreData.currentRequestID,
-      );
-      if (fullPKUsers.length >= 2) {
-        final localID = ZegoUIKit().getLocalUser().id;
-        final localIdx =
-            fullPKUsers.indexWhere((u) => u.userInfo.id == localID);
-        if (localIdx > 0) {
-          final localUser = fullPKUsers.removeAt(localIdx);
-          fullPKUsers.insert(0, localUser);
-        }
-        final pkUsersToWrite = List<ZegoLiveStreamingPKUser>.from(fullPKUsers);
-        final requestID = _coreData.currentRequestID;
-        final roomID = _coreData.roomID;
-        _coreData.roomPropsWriteTimer?.cancel();
-        _coreData.roomPropsWriteTimer = Timer(
-          const Duration(milliseconds: 500),
-          () async {
-            await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
-              roomID: roomID,
-              roomProperties: {
-                roomPropKeyRequestID: requestID,
-                roomPropKeyHost: ZegoUIKit().getLocalUser().id,
-                roomPropKeyPKUsers: jsonEncode(pkUsersToWrite),
-              },
-              isForce: true,
-              isUpdateOwner: true,
-            );
-          },
-        );
-      }
-    }
-
     if (onlyLocalInPK && !fromRoomProps) {
       /// all leave but only local
       await quitPKBattle(requestID: _coreData.currentRequestID);
@@ -474,9 +460,6 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       tag: 'live-streaming-pk',
       subTag: 'service, connect-users, hostDisconnectedOnPKUsersChanged',
     );
-
-    _coreData.roomPropsWriteTimer?.cancel();
-    _coreData.roomPropsWriteTimer = null;
 
     if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
       /// ready to quit pk state
@@ -715,9 +698,8 @@ bool _isUninvitedReAdd({
   if (!updatedPKUsers.any((u) => u.userInfo.id == localID)) {
     return false;
   }
-  final invitees = ZegoUIKit()
-      .getSignalingPlugin()
-      .getAdvanceInvitees(currentRequestID);
+  final invitees =
+      ZegoUIKit().getSignalingPlugin().getAdvanceInvitees(currentRequestID);
   final locallyInvited = invitees.any(
     (u) =>
         u.userID == localID &&
