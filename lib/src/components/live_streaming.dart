@@ -13,6 +13,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:zego_uikit/zego_uikit.dart';
 
 // Project imports:
+import 'package:zego_uikit_prebuilt_live_streaming/src/components/background_timeout_dialog.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/live_page.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/preview_page.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/utils/dialogs.dart';
@@ -43,7 +44,7 @@ import 'mini_live.dart';
 /// or our [sample code](https://github.com/ZEGOCLOUD/zego_uikit_prebuilt_live_streaming_example_flutter).
 class ZegoLiveStreamingPage extends StatefulWidget {
   const ZegoLiveStreamingPage({
-    Key? key,
+    super.key,
     required this.appID,
     required this.appSign,
     required this.userID,
@@ -52,7 +53,7 @@ class ZegoLiveStreamingPage extends StatefulWidget {
     required this.config,
     this.token = '',
     this.events,
-  }) : super(key: key);
+  });
 
   /// You can create a project and obtain an appID from the [ZEGOCLOUD Admin Console](https://console.zegocloud.com).
   final int appID;
@@ -107,6 +108,12 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
   late int _lifecycleToken;
 
+  DateTime? _backgroundedAt;
+  bool _isBackgroundDialogShowing = false;
+
+  /// Token stored at init for background timeout re-login.
+  late String _storedToken;
+
   ZegoUIKitPrebuiltLiveStreamingEvents get events =>
       widget.events ?? ZegoUIKitPrebuiltLiveStreamingEvents();
 
@@ -131,6 +138,8 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
     super.initState();
 
     WidgetsBinding.instance.addObserver(this);
+
+    _storedToken = widget.token;
 
     ZegoLoggerService.logInfo(
       'initState',
@@ -465,15 +474,85 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
     switch (state) {
       case AppLifecycleState.resumed:
-        ZegoLiveStreamingManagers().plugins?.tryReLogin();
+        _onAppResumed();
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
+        _backgroundedAt = DateTime.now();
         break;
       // case AppLifecycleState.hidden:
       default:
         break;
+    }
+  }
+
+  void _onAppResumed() {
+    if (_backgroundedAt == null) return;
+    if (ZegoLiveStreamingMiniOverlayMachine().isMinimizing) {
+      _backgroundedAt = null;
+      return;
+    }
+
+    final elapsed = DateTime.now().difference(_backgroundedAt!);
+    _backgroundedAt = null;
+
+    final dialogConfig = widget.config.dialogs.backgroundTimeout;
+    if (elapsed >= dialogConfig.timeout && !_isBackgroundDialogShowing) {
+      _showBackgroundTimeoutDialog();
+    }
+  }
+
+  Future<void> _showBackgroundTimeoutDialog() async {
+    if (!mounted) return;
+    _isBackgroundDialogShowing = true;
+
+    final dialogConfig = widget.config.dialogs.backgroundTimeout;
+
+    final result = await showBackgroundTimeoutDialog(
+      context: context,
+      rootNavigator: widget.config.rootNavigator,
+      config: dialogConfig,
+    );
+
+    _isBackgroundDialogShowing = false;
+
+    if (result) {
+      final resumeAction = dialogConfig.onResume ??
+          (() async {
+            final plugins = ZegoLiveStreamingManagers().plugins;
+            if (plugins == null) return false;
+            return plugins.reconnectAll(
+              token: _storedToken,
+              markAsLargeRoom: widget.config.markAsLargeRoom,
+            );
+          });
+
+      final success = await resumeAction();
+      if (!success && mounted) {
+        events.onError?.call(ZegoUIKitError(
+          code: -1,
+          message: 'Failed to reconnect after background timeout',
+          method: '_showBackgroundTimeoutDialog',
+        ));
+      }
+    } else {
+      final leaveAction = dialogConfig.onLeave ??
+          () {
+            try {
+              Navigator.of(
+                context,
+                rootNavigator: widget.config.rootNavigator,
+              ).pop(true);
+            } catch (e) {
+              ZegoLoggerService.logError(
+                'background leave pop exception: $e',
+                tag: 'live-streaming',
+                subTag: 'prebuilt',
+              );
+            }
+          };
+      leaveAction();
     }
   }
 

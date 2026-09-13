@@ -441,7 +441,7 @@ class ZegoLiveStreamingPlugins {
     events.beauty.onError?.call(error);
   }
 
-  Future<void> tryReLogin() async {
+  Future<void> tryReLogin({String? updatedToken}) async {
     ZegoLoggerService.logInfo(
       'state:${pluginUserStateNotifier.value}',
       tag: 'live-streaming-plugin',
@@ -467,8 +467,10 @@ class ZegoLiveStreamingPlugins {
       return;
     }
 
+    final loginToken = updatedToken ?? token;
+
     ZegoLoggerService.logInfo(
-      'id:$userID, name:$userName',
+      'id:$userID, name:$userName, hasToken:${loginToken.isNotEmpty}',
       tag: 'live-streaming-plugin',
       subTag: 'tryReLogin',
     );
@@ -477,7 +479,7 @@ class ZegoLiveStreamingPlugins {
       await ZegoUIKit().getSignalingPlugin().login(
             id: userID,
             name: userName,
-            token: token,
+            token: loginToken,
           );
     });
   }
@@ -554,5 +556,122 @@ class ZegoLiveStreamingPlugins {
 
       return true;
     });
+  }
+
+  /// Checks all connection states (Express engine, Express room, Signaling user,
+  /// Signaling room) and attempts to reconnect any that are disconnected.
+  ///
+  /// Retries up to [maxRetries] times with 1-second delay between attempts.
+  /// Returns `true` if all states are OK after reconnection, `false` if all
+  /// retries failed.
+  Future<bool> reconnectAll({
+    required String token,
+    bool markAsLargeRoom = false,
+    int maxRetries = 3,
+  }) async {
+    if (!initialized) {
+      ZegoLoggerService.logInfo(
+        'plugin is not init, skip reconnectAll',
+        tag: 'live-streaming-plugin',
+        subTag: 'reconnectAll',
+      );
+      return false;
+    }
+
+    for (var i = 0; i < maxRetries; i++) {
+      final expressRoomOk = ZegoUIKit().isRoomLogin;
+      final signalingUserOk =
+          ZegoUIKit().getSignalingPlugin().getConnectionState() ==
+              ZegoSignalingPluginConnectionState.connected;
+      final signalingRoomOk = ZegoUIKit().getSignalingPlugin().getRoomState() ==
+          ZegoSignalingPluginRoomState.connected;
+
+      ZegoLoggerService.logInfo(
+        'reconnectAll attempt ${i + 1}/$maxRetries: '
+        'expressRoom:$expressRoomOk, '
+        'signalingUser:$signalingUserOk, signalingRoom:$signalingRoomOk',
+        tag: 'live-streaming-plugin',
+        subTag: 'reconnectAll',
+      );
+
+      if (expressRoomOk && signalingUserOk && signalingRoomOk) {
+        return true;
+      }
+
+      // Fix signaling user login if disconnected
+      if (!signalingUserOk) {
+        try {
+          await ZegoUIKit().getSignalingPlugin().logout();
+          await ZegoUIKit().getSignalingPlugin().login(
+                id: userID,
+                name: userName,
+                token: token,
+              );
+          ZegoLoggerService.logInfo(
+            'signaling user re-login done',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        } catch (e) {
+          ZegoLoggerService.logError(
+            'signaling user re-login failed: $e',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        }
+      }
+
+      // Fix signaling room if not connected
+      if (!signalingRoomOk) {
+        try {
+          await ZegoUIKit().getSignalingPlugin().joinRoom(roomID);
+          ZegoLoggerService.logInfo(
+            'signaling room re-join done',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        } catch (e) {
+          ZegoLoggerService.logError(
+            'signaling room re-join failed: $e',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        }
+      }
+
+      // Fix Express room if not logged in
+      if (!expressRoomOk) {
+        try {
+          await ZegoUIKit().joinRoom(
+            roomID,
+            token: token,
+            markAsLargeRoom: markAsLargeRoom,
+          );
+          ZegoLoggerService.logInfo(
+            'express room re-join done',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        } catch (e) {
+          ZegoLoggerService.logError(
+            'express room re-join failed: $e',
+            tag: 'live-streaming-plugin',
+            subTag: 'reconnectAll',
+          );
+        }
+      }
+
+      if (i < maxRetries - 1) {
+        await Future.delayed(const Duration(seconds: 5));
+      }
+    }
+
+    ZegoLoggerService.logError(
+      'reconnectAll failed after $maxRetries retries',
+      tag: 'live-streaming-plugin',
+      subTag: 'reconnectAll',
+    );
+
+    return false;
   }
 }

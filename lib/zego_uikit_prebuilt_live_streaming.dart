@@ -4,6 +4,7 @@ export 'package:zego_uikit/zego_uikit.dart';
 
 export 'src/config.dart';
 export 'src/config.defines.dart';
+export 'src/config/dialogs.dart';
 export 'src/controller.dart';
 export 'src/defines.dart';
 export 'src/events.dart';

@@ -10,6 +10,7 @@ import 'package:zego_uikit/zego_uikit.dart';
 // Project imports:
 import 'package:zego_uikit_prebuilt_live_streaming/src/components/live_list/controller.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/config.defines.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/config/dialogs.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/deprecated/deprecated.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/inner_text.dart';
@@ -101,6 +102,12 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
 
   /// co-cohost config
   ZegoLiveStreamingCoHostConfig coHost;
+
+  /// Dialog configurations for the live streaming.
+  ///
+  /// Contains configurable dialogs such as the background timeout dialog.
+  /// Each dialog type is a property inside this config for easy expansion.
+  ZegoLiveStreamingDialogsConfig dialogs;
 
   /// Specifies the initial role when joining the live streaming.
   /// The role change after joining is not constrained by this property.
@@ -294,7 +301,8 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
         coHost = ZegoLiveStreamingCoHostConfig(
           stopCoHostingWhenMicCameraOff: false,
           disableCoHostInvitationReceivedDialog: false,
-        ) {
+        ),
+        dialogs = ZegoLiveStreamingDialogsConfig() {
     coHost.turnOnCameraWhenCohosted = () {
       return true;
     };
@@ -350,7 +358,8 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
         coHost = ZegoLiveStreamingCoHostConfig(
           stopCoHostingWhenMicCameraOff: false,
           disableCoHostInvitationReceivedDialog: false,
-        ) {
+        ),
+        dialogs = ZegoLiveStreamingDialogsConfig() {
     coHost.turnOnCameraWhenCohosted = () {
       return true;
     };
@@ -404,6 +413,7 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
     ZegoLiveStreamingScreenSharingConfig? screenSharing,
     ZegoLiveStreamingPIPConfig? pip,
     ZegoLiveStreamingCoHostConfig? coHost,
+    ZegoLiveStreamingDialogsConfig? dialogs,
   })  : mediaPlayer = media ?? ZegoLiveStreamingMediaPlayerConfig(),
         screenSharing = screenSharing ?? ZegoLiveStreamingScreenSharingConfig(),
         pip = pip ?? ZegoLiveStreamingPIPConfig(),
@@ -424,7 +434,8 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
         duration = duration ?? ZegoLiveStreamingDurationConfig(),
         signalingPlugin =
             signalingPlugin ?? ZegoLiveStreamingSignalingPluginConfig(),
-        coHost = coHost ?? ZegoLiveStreamingCoHostConfig() {
+        coHost = coHost ?? ZegoLiveStreamingCoHostConfig(),
+        dialogs = dialogs ?? ZegoLiveStreamingDialogsConfig() {
     this.coHost.turnOnCameraWhenCohosted = turnOnCameraWhenCohosted ??
         () {
           return true;
@@ -484,6 +495,7 @@ class ZegoUIKitPrebuiltLiveStreamingConfig {
         'advanceConfigs:$advanceConfigs, '
         'audienceAudioVideoResourceMode:$audienceAudioVideoResourceMode, '
         'showToast:$showToast, '
+        'dialogs:$dialogs, '
         '}';
   }
 }
