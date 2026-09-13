@@ -39,6 +39,7 @@ extension PKServiceHost on ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _coreData.lastQuitRequestID = requestID;
     _coreData.currentRequestID = '';
+    _coreData.invitationDataCache.remove(requestID);
 
     updatePKUsers([]);
 
@@ -106,6 +107,7 @@ extension PKServiceHost on ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _coreData.lastQuitRequestID = requestID;
     _coreData.currentRequestID = '';
+    _coreData.invitationDataCache.remove(requestID);
 
     updatePKUsers([]);
 

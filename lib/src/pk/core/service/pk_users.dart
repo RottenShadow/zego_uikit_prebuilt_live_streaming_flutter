@@ -108,8 +108,24 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     final initiator =
         ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(requestID);
     if (initiator != null &&
-        initiator.state != AdvanceInvitationState.rejected) {
-      final user = parsePKUserFromSignalingUser(initiator);
+        !_coreData.quitRequestUserIDs.contains(initiator.userID) &&
+        (initiator.state == AdvanceInvitationState.accepted ||
+            initiator.state == AdvanceInvitationState.idle)) {
+      ZegoLiveStreamingPKUser? user;
+      if (initiator.extendedData.isNotEmpty) {
+        user = parsePKUserFromSignalingUser(initiator);
+      } else {
+        final fallbackData = _coreData.invitationDataCache[requestID];
+        if (fallbackData != null && fallbackData.isNotEmpty) {
+          user = parsePKUserFromSignalingUser(
+            AdvanceInvitationUser(
+              userID: initiator.userID,
+              state: initiator.state,
+              extendedData: fallbackData,
+            ),
+          );
+        }
+      }
       if (user != null) {
         pkUsers.add(user);
       }
@@ -128,7 +144,8 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     }
 
     // Deduplicate
-    final distinctUsers = removeDuplicatePKUsers(pkUsers);
+    final validUsers = pkUsers.where((u) => u.liveID.isNotEmpty).toList();
+    final distinctUsers = removeDuplicatePKUsers(validUsers);
 
     // If local user is host and in PK, ensure local host is first
     if (isHost) {
@@ -416,15 +433,31 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
         _coreData.currentRequestID,
       );
       if (fullPKUsers.length >= 2) {
-        await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
-          roomID: _coreData.roomID,
-          roomProperties: {
-            roomPropKeyRequestID: _coreData.currentRequestID,
-            roomPropKeyHost: ZegoUIKit().getLocalUser().id,
-            roomPropKeyPKUsers: jsonEncode(fullPKUsers),
+        final localID = ZegoUIKit().getLocalUser().id;
+        final localIdx =
+            fullPKUsers.indexWhere((u) => u.userInfo.id == localID);
+        if (localIdx > 0) {
+          final localUser = fullPKUsers.removeAt(localIdx);
+          fullPKUsers.insert(0, localUser);
+        }
+        final pkUsersToWrite = List<ZegoLiveStreamingPKUser>.from(fullPKUsers);
+        final requestID = _coreData.currentRequestID;
+        final roomID = _coreData.roomID;
+        _coreData.roomPropsWriteTimer?.cancel();
+        _coreData.roomPropsWriteTimer = Timer(
+          const Duration(milliseconds: 500),
+          () async {
+            await ZegoUIKit().getSignalingPlugin().updateRoomProperties(
+              roomID: roomID,
+              roomProperties: {
+                roomPropKeyRequestID: requestID,
+                roomPropKeyHost: ZegoUIKit().getLocalUser().id,
+                roomPropKeyPKUsers: jsonEncode(pkUsersToWrite),
+              },
+              isForce: true,
+              isUpdateOwner: true,
+            );
           },
-          isForce: true,
-          isUpdateOwner: true,
         );
       }
     }
@@ -441,6 +474,9 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       tag: 'live-streaming-pk',
       subTag: 'service, connect-users, hostDisconnectedOnPKUsersChanged',
     );
+
+    _coreData.roomPropsWriteTimer?.cancel();
+    _coreData.roomPropsWriteTimer = null;
 
     if (pkStateNotifier.value != ZegoLiveStreamingPKBattleState.idle) {
       /// ready to quit pk state

@@ -208,6 +208,16 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _coreData.currentRequestID = sendResult.invitationID;
     _coreData.lastQuitRequestID = '';
+    _coreData.quitRequestUserIDs.clear();
+    _coreData.invitationDataCache[sendResult.invitationID] = jsonEncode(
+      PKServiceRequestData(
+        inviter: ZegoUIKit().getLocalUser(),
+        invitees: targetHostUserIDs,
+        liveID: _coreData.roomID,
+        isAutoAccept: isAutoAccept,
+        customData: customData,
+      ),
+    );
 
     return ZegoLiveStreamingPKServiceSendRequestResult(
       requestID: sendResult.invitationID,
@@ -289,6 +299,17 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
         ZegoLiveStreamingReporter.eventKeyCallID: addResult.invitationID,
       },
     );
+
+    _coreData.invitationDataCache[requestID] = jsonEncode(
+      PKServiceRequestData(
+        inviter: ZegoUIKit().getLocalUser(),
+        invitees: targetHostUserIDs,
+        liveID: _coreData.roomID,
+        isAutoAccept: isAutoAccept,
+        customData: customData,
+      ),
+    );
+    _coreData.quitRequestUserIDs.clear();
 
     return ZegoLiveStreamingPKServiceSendRequestResult(
       requestID: addResult.invitationID,
@@ -459,26 +480,35 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
         ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(requestID);
     if (null != sessionInitiator &&
         sessionInitiator.userID != ZegoUIKit().getLocalUser().id &&
-        sessionInitiator.extendedData.isNotEmpty &&
         targetHost.userInfo.id != sessionInitiator.userID &&
         !sessionHosts.any((h) => h.userInfo.id == sessionInitiator.userID)) {
-      try {
-        final initiatorPKRequestData = PKServiceRequestData.fromJson(
-          jsonDecode(sessionInitiator.extendedData) as Map<String, dynamic>,
-        );
-        sessionHosts.add(ZegoLiveStreamingPKUser(
-          userInfo: ZegoUIKitUser(
-            id: sessionInitiator.userID,
-            name: initiatorPKRequestData.inviter.name,
-          ),
-          liveID: initiatorPKRequestData.liveID,
-        ));
-      } catch (e) {
-        ZegoLoggerService.logInfo(
-          'acceptPKBattleRequest, parse initiator extendedData failed:$e',
-          tag: 'live-streaming-pk',
-          subTag: 'service, host, acceptPKBattleRequest',
-        );
+      // ZIM never populates the initiator's extendedData on remote devices.
+      // Fall back to the invitationDataCache (PKServiceRequestData JSON) the
+      // same way getPKUsersFromInvitationMap does, so H1 is never missing.
+      final rawData = sessionInitiator.extendedData.isNotEmpty
+          ? sessionInitiator.extendedData
+          : _coreData.invitationDataCache[requestID];
+      if (rawData != null && rawData.isNotEmpty) {
+        try {
+          final initiatorPKRequestData = PKServiceRequestData.fromJson(
+            jsonDecode(rawData) as Map<String, dynamic>,
+          );
+          if (initiatorPKRequestData.liveID.isNotEmpty) {
+            sessionHosts.add(ZegoLiveStreamingPKUser(
+              userInfo: ZegoUIKitUser(
+                id: sessionInitiator.userID,
+                name: initiatorPKRequestData.inviter.name,
+              ),
+              liveID: initiatorPKRequestData.liveID,
+            ));
+          }
+        } catch (e) {
+          ZegoLoggerService.logInfo(
+            'acceptPKBattleRequest, parse initiator data failed:$e',
+            tag: 'live-streaming-pk',
+            subTag: 'service, host, acceptPKBattleRequest',
+          );
+        }
       }
     }
 

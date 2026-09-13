@@ -1,3 +1,6 @@
+// Dart imports:
+import 'dart:async';
+
 // Flutter imports:
 import 'package:flutter/cupertino.dart';
 
@@ -85,6 +88,11 @@ class ZegoUIKitPrebuiltLiveStreamingPKData
       subTag: 'service data',
     );
 
+    roomPropsWriteTimer?.cancel();
+    roomPropsWriteTimer = null;
+    invitationDataCache.clear();
+    quitRequestUserIDs.clear();
+
     _roomID = '';
     prebuiltConfig = null;
     innerText = null;
@@ -149,6 +157,19 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServiceData {
   bool showOutgoingPKBattleRequestRejectedDialog = false;
 
   List<String> playingHostIDs = [];
+
+  Timer? roomPropsWriteTimer;
+
+  /// Cached invitation data (PKServiceRequestData JSON) per requestID.
+  /// Used as fallback when the initiator's extendedData is empty on remote
+  /// devices (ZIM doesn't relay the initiator's own accept data back).
+  final Map<String, String> invitationDataCache = {};
+
+  /// User IDs that have quit the current PK session. Used to exclude
+  /// quit initiators from getPKUsersFromInvitationMap (ZIM keeps the
+  /// initiator in idle state even after they quit). Cleared on new
+  /// invitation (sent or received) so rejoin works correctly.
+  final Set<String> quitRequestUserIDs = {};
 
   /// Whether the latest [currentPKUsers] update was driven by a room-properties
   /// snapshot (backend/another writer) rather than a local action. Read by

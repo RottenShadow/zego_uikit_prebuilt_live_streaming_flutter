@@ -193,8 +193,30 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       return;
     }
 
+    /// Skip the invitation-map snapshot when any user in this event is
+    /// leaving (quit / offline). The map may not yet reflect the departure,
+    /// so trusting it here would re-add the user who is about to be removed
+    /// by the specific handler below (_onInvitationUserQuit / Offline).
+    final isUserLeaving = event.callUserList.any(
+      (u) =>
+          u.state == ZegoSignalingPluginInvitationUserState.quited ||
+          u.state == ZegoSignalingPluginInvitationUserState.offline,
+    );
+
     final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
-    if (pkUsersFromMap.length >= 2) {
+    if (pkUsersFromMap.length >= 2 && !isUserLeaving) {
+      final localAccepted = pkUsersFromMap.any(
+        (u) => u.userInfo.id == ZegoUIKit().getLocalUser().id,
+      );
+      if (!localAccepted) {
+        ZegoLoggerService.logInfo(
+          '_onInvitationUserStateChanged, '
+          'local user not in PK users from map, skipping update',
+          tag: 'live-streaming-pk',
+          subTag: 'pk event',
+        );
+        return;
+      }
       if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
         updatePKState(ZegoLiveStreamingPKBattleState.loading);
       }
@@ -470,6 +492,10 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
             subTag: 'pk event',
           );
 
+          for (final id in alreadyBrokenIDs) {
+            _coreData.quitRequestUserIDs.add(id);
+          }
+
           updatePKUsers(
             List.from(_coreData.currentPKUsers.value)
               ..removeWhere(
@@ -537,6 +563,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         /// in c event, a is initiator, b is inviter
         final initiatorPKRequestData = PKServiceRequestData.fromJson(
             jsonDecode(params['data']!) as Map<String, dynamic>);
+        _coreData.invitationDataCache[requestID] = params['data']!;
+        _coreData.quitRequestUserIDs.clear();
         if (initiatorPKRequestData.inviter.id == inviter.id) {
           inviterLiveID = initiatorPKRequestData.liveID;
         } else {
@@ -792,12 +820,33 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         final invitationPKUsers =
             getPKUsersFromInvitationMap(_coreData.currentRequestID);
         if (invitationPKUsers.length >= 2) {
+          // The room-attribute snapshot published by the evicting host is the
+          // authoritative removal signal: it reflects a quit/offline that ZIM
+          // may not yet have propagated to this device. Intersect the invitation
+          // map result with the snapshot IDs so a user absent from the snapshot
+          // is also excluded here, preventing the remove→re-add oscillation.
+          final snapshotIDs = (jsonDecode(
+                      event.setProperties[roomPropKeyPKUsers] ?? '[]')
+                  as List<dynamic>)
+              .map((e) => (e as Map<String, dynamic>)['user_id']?.toString() ??
+                  (e['userInfo'] as Map<String, dynamic>?)?['id']?.toString() ??
+                  '')
+              .where((id) => id.isNotEmpty)
+              .toSet();
+          final reconciled = snapshotIDs.isEmpty
+              ? invitationPKUsers
+              : invitationPKUsers
+                  .where((u) => snapshotIDs.contains(u.userInfo.id))
+                  .toList();
+          final toUpdate =
+              reconciled.length >= 2 ? reconciled : invitationPKUsers;
           ZegoLoggerService.logInfo(
-            'onRoomAttributesUpdated: using invitation map hosts ($invitationPKUsers) instead of room attributes snapshot',
+            'onRoomAttributesUpdated: using invitation map hosts ($toUpdate) '
+            'intersected with snapshot IDs ($snapshotIDs)',
             tag: 'live-streaming-pk',
             subTag: 'pk event',
           );
-          updatePKUsers(invitationPKUsers, fromRoomProps: true);
+          updatePKUsers(toUpdate, fromRoomProps: true);
           return;
         }
       }
@@ -807,6 +856,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
               .map(
                 (userJson) => ZegoLiveStreamingPKUser.fromJson(userJson),
               )
+              .where((user) => user.liveID.isNotEmpty)
               .toList();
 
       if (updatedPKUsers.length < 2) {
@@ -1298,6 +1348,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
     _coreData.lastQuitRequestID = event.requestID;
     _coreData.currentRequestID = '';
+    _coreData.invitationDataCache.remove(event.requestID);
+    _coreData.quitRequestUserIDs.clear();
 
     defaultAction() {
       showPKBattleEndedDialog(event);
@@ -1334,14 +1386,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       return;
     }
 
+    _coreData.quitRequestUserIDs.add(event.fromHost.id);
+
     final pkUsersFromMap = getPKUsersFromInvitationMap(event.requestID);
+    final users = pkUsersFromMap.isNotEmpty
+        ? pkUsersFromMap
+        : List<ZegoLiveStreamingPKUser>.from(
+            _coreData.currentPKUsers.value,
+          );
     updatePKUsers(
-      pkUsersFromMap.isNotEmpty
-          ? pkUsersFromMap
-          : (List.from(_coreData.currentPKUsers.value)
-            ..removeWhere(
-              (pkUser) => pkUser.userInfo.id == event.fromHost.id,
-            )),
+      users..removeWhere((u) => u.userInfo.id == event.fromHost.id),
     );
 
     _checkNullToIdle(event.requestID);
@@ -1370,14 +1424,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       return;
     }
 
+    _coreData.quitRequestUserIDs.add(event.fromHost.id);
+
     final pkUsersFromMap = getPKUsersFromInvitationMap(event.requestID);
+    final users = pkUsersFromMap.isNotEmpty
+        ? pkUsersFromMap
+        : List<ZegoLiveStreamingPKUser>.from(
+            _coreData.currentPKUsers.value,
+          );
     updatePKUsers(
-      pkUsersFromMap.isNotEmpty
-          ? pkUsersFromMap
-          : (List.from(_coreData.currentPKUsers.value)
-            ..removeWhere(
-              (pkUser) => pkUser.userInfo.id == event.fromHost.id,
-            )),
+      users..removeWhere((u) => u.userInfo.id == event.fromHost.id),
     );
 
     await _checkNullToIdle(event.requestID);
