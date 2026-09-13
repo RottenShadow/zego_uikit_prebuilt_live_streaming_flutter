@@ -114,7 +114,11 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       ZegoLiveStreamingPKUser? user;
       if (initiator.extendedData.isNotEmpty) {
         user = parsePKUserFromSignalingUser(initiator);
-      } else {
+      }
+      // If extendedData was empty, or parsing produced an empty liveID
+      // (e.g. ZIM wrapped acceptance data in its envelope format), fall back
+      // to the invitationDataCache which holds the original PKServiceRequestData.
+      if (user == null || user.liveID.isEmpty) {
         final fallbackData = _coreData.invitationDataCache[requestID];
         if (fallbackData != null && fallbackData.isNotEmpty) {
           user = parsePKUserFromSignalingUser(
@@ -258,10 +262,18 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     final fromRoomProps = _coreData.pkUsersUpdateFromRoomProps;
 
     return waitCompleter('onPKUsersChanged').then((_) async {
-      isHost
-          ? await hostOnPKUsersChanged(fromRoomProps: fromRoomProps)
-          : await audienceOnPKUsersChanged(fromRoomProps: fromRoomProps);
-    }).then((_) {
+      try {
+        isHost
+            ? await hostOnPKUsersChanged(fromRoomProps: fromRoomProps)
+            : await audienceOnPKUsersChanged(fromRoomProps: fromRoomProps);
+      } catch (e, s) {
+        ZegoLoggerService.logError(
+          'onPKUsersChanged error: $e\n$s',
+          tag: 'live-streaming-pk',
+          subTag: 'service, connect-users',
+        );
+      }
+    }).whenComplete(() {
       completeCompleter('onPKUsersChanged');
     });
   }

@@ -163,6 +163,18 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
 
     _serviceInitialized = false;
 
+    // Drain any stuck completers from the queue to prevent permanent blocks
+    // on the next PK session (e.g. if an exception in hostOnPKUsersChanged
+    // prevented completeCompleter from being called).
+    for (final c in _completerQueue) {
+      if (!c.isCompleted) c.complete();
+    }
+    _completerQueue.clear();
+    for (final c in _roomAttributesCompleterQueue) {
+      if (!c.isCompleted) c.complete();
+    }
+    _roomAttributesCompleterQueue.clear();
+
     _mixer.uninit();
     _coreData.currentRequestID = '';
     _coreData.playingHostIDs.clear();

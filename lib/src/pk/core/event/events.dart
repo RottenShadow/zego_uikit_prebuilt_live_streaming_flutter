@@ -203,6 +203,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           u.state == ZegoSignalingPluginInvitationUserState.offline,
     );
 
+    // If a user accepted (re-joined), clear them from quitRequestUserIDs so
+    // getPKUsersFromInvitationMap won't exclude them via the initiator filter.
+    // Without this, a remote host that never sent/received the re-invitation
+    // would keep the user in quitRequestUserIDs and hide them.
+    for (final u in event.callUserList) {
+      if (u.state == ZegoSignalingPluginInvitationUserState.accepted) {
+        _coreData.quitRequestUserIDs.remove(u.userID);
+      }
+    }
+
     final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
     if (pkUsersFromMap.length >= 2 && !isUserLeaving) {
       final localAccepted = pkUsersFromMap.any(
