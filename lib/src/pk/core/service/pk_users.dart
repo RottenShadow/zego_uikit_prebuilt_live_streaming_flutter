@@ -86,6 +86,30 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
           liveID = hostInfo.fromLiveID;
         }
       }
+
+      // ZIM wraps acceptance data in an envelope:
+      // {"inviter":{...},"custom_data":"{\"name\":\"...\",\"live_id\":\"...\"}"}
+      // PKServiceRequestData parsing may succeed but leave liveID empty because
+      // live_id is inside custom_data, not at the top level. Try extracting from
+      // custom_data as PKServiceAcceptData.
+      if (liveID.isEmpty) {
+        try {
+          final envelope = jsonDecode(signalingUser.extendedData)
+              as Map<String, dynamic>;
+          final customData = envelope['custom_data'] as String?;
+          if (customData != null && customData.isNotEmpty) {
+            final acceptData = PKServiceAcceptData.fromJson(
+              jsonDecode(customData) as Map<String, dynamic>,
+            );
+            if (acceptData.liveID.isNotEmpty) {
+              liveID = acceptData.liveID;
+            }
+            if (acceptData.name.isNotEmpty) {
+              name = acceptData.name;
+            }
+          }
+        } catch (_) {}
+      }
     }
 
     return ZegoLiveStreamingPKUser(
@@ -139,7 +163,8 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     final invitees =
         ZegoUIKit().getSignalingPlugin().getAdvanceInvitees(requestID);
     for (final invitee in invitees) {
-      if (invitee.state == AdvanceInvitationState.accepted) {
+      if (invitee.state == AdvanceInvitationState.accepted &&
+          !_coreData.quitRequestUserIDs.contains(invitee.userID)) {
         final user = parsePKUserFromSignalingUser(invitee);
         if (user != null) {
           pkUsers.add(user);
@@ -342,19 +367,34 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
     /// before starting the mixer or streams. This ensures all hosts and
     /// their audiences have consistent room attributes from the moment the
     /// mix starts playing.
+    ///
+    /// Use currentPKUsers (already set by updatePKUsers) instead of
+    /// re-querying getPKUsersFromInvitationMap. The invitation map may not
+    /// yet reflect the invitee's accepted state when the invitee calls
+    /// acceptPKBattleRequest — onAdvanceInvitationUserStateChanged fires
+    /// AFTER accept returns and updatePKUsers is called, so re-querying
+    /// would return < 2 users and skip the write entirely.
     if (!fromRoomProps && _coreData.currentRequestID.isNotEmpty) {
-      final fullPKUsers = getPKUsersFromInvitationMap(
-        _coreData.currentRequestID,
+      final pkUsersToWrite = List<ZegoLiveStreamingPKUser>.from(
+        _coreData.currentPKUsers.value,
       );
-      if (fullPKUsers.length >= 2) {
+      if (pkUsersToWrite.length >= 2) {
         final localID = ZegoUIKit().getLocalUser().id;
         final localIdx =
-            fullPKUsers.indexWhere((u) => u.userInfo.id == localID);
+            pkUsersToWrite.indexWhere((u) => u.userInfo.id == localID);
         if (localIdx > 0) {
-          final localUser = fullPKUsers.removeAt(localIdx);
-          fullPKUsers.insert(0, localUser);
+          final localUser = pkUsersToWrite.removeAt(localIdx);
+          pkUsersToWrite.insert(0, localUser);
+        } else if (localIdx == -1) {
+          // Defense-in-depth: insert local user at index 0 if missing
+          pkUsersToWrite.insert(
+            0,
+            ZegoLiveStreamingPKUser(
+              userInfo: ZegoUIKit().getLocalUser(),
+              liveID: _coreData.roomID,
+            ),
+          );
         }
-        final pkUsersToWrite = List<ZegoLiveStreamingPKUser>.from(fullPKUsers);
         final requestID = _coreData.currentRequestID;
         final roomID = _coreData.roomID;
         await ZegoUIKit().getSignalingPlugin().updateRoomProperties(

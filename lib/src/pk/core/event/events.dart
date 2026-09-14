@@ -838,9 +838,11 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           final snapshotIDs = (jsonDecode(
                       event.setProperties[roomPropKeyPKUsers] ?? '[]')
                   as List<dynamic>)
-              .map((e) => (e as Map<String, dynamic>)['user_id']?.toString() ??
-                  (e['userInfo'] as Map<String, dynamic>?)?['id']?.toString() ??
-                  '')
+              .map((e) {
+                final m = e as Map<String, dynamic>;
+                final userInfo = m['user_info'] as Map<String, dynamic>?;
+                return userInfo?['id']?.toString() ?? '';
+              })
               .where((id) => id.isNotEmpty)
               .toSet();
           final reconciled = snapshotIDs.isEmpty

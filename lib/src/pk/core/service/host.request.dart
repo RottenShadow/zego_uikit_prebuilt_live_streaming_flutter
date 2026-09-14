@@ -83,36 +83,12 @@ extension PKServiceHostRequest on ZegoUIKitPrebuiltLiveStreamingPKServices {
         subTag: 'service, host, sendPKBattleRequest',
       );
     } else {
-      var inInvitationUserIDs = <String>[];
-      for (var userID in targetHostIDs) {
-        if (ZegoUIKit()
-            .getSignalingPlugin()
-            .isUserInAdvanceInvitationNow(userID)) {
-          inInvitationUserIDs.add(userID);
-        }
-      }
-      tempTargetHostUserIDs.removeWhere(
-        (userID) => inInvitationUserIDs.contains(userID),
-      );
-      if (tempTargetHostUserIDs.isEmpty) {
-        ZegoLoggerService.logInfo(
-          'could not send pk request, '
-          'all user is in PK, '
-          'param target host id:$targetHostIDs, '
-          'now target host user ids:$tempTargetHostUserIDs, '
-          'advance data:${ZegoUIKit().getSignalingPlugin().advanceInvitationToString()}, ',
-          tag: 'live-streaming-pk',
-          subTag: 'service, host, sendPKBattleRequest',
-        );
-
-        return ZegoLiveStreamingPKServiceSendRequestResult(
-          errorUserIDs: inInvitationUserIDs,
-          error: PlatformException(
-            code: '-1',
-            message: 'all user is in PK or requesting',
-          ),
-        );
-      }
+      /// Do NOT pre-filter with the plugin's local "in invitation" cache here:
+      /// after a host quits a previous session, the local cache can still
+      /// report them as a current member (stale entry where they appear as a
+      /// waiting invitee in their own old invitation). This silently drops the
+      /// re-invite. Let the signaling plugin/ZIM arbitrate and return
+      /// per-user errors instead.
     }
 
     return (needAddToCurrentSession && _coreData.currentRequestID.isNotEmpty)
