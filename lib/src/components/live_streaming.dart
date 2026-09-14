@@ -474,16 +474,32 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
     switch (state) {
       case AppLifecycleState.resumed:
+        ZegoLiveStreamingManagers().plugins?.tryReLogin();
+        ZegoLiveStreamingManagers().plugins?.tryReEnterRoom();
         _onAppResumed();
         break;
       case AppLifecycleState.inactive:
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
-        _backgroundedAt = DateTime.now();
+        _backgroundedAt = _updateBackgroundedAt();
         break;
       // case AppLifecycleState.hidden:
       default:
         break;
+    }
+  }
+
+  DateTime _updateBackgroundedAt() {
+    if (_backgroundedAt == null) {
+      return DateTime.now();
+    } else {
+      final elapsed = DateTime.now().difference(_backgroundedAt!);
+      final dialogConfig = widget.config.dialogs.backgroundTimeout;
+      if (elapsed >= dialogConfig.timeout) {
+        return _backgroundedAt!;
+      } else {
+        return DateTime.now();
+      }
     }
   }
 
