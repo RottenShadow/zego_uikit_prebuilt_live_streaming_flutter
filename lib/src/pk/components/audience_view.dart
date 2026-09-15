@@ -13,7 +13,7 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 /// one stream, more host configs
 class ZegoLiveStreamingPKAudienceView extends StatefulWidget {
   const ZegoLiveStreamingPKAudienceView({
-    Key? key,
+    super.key,
     required this.mixerStreamID,
     required this.hosts,
     required this.config,
@@ -21,7 +21,7 @@ class ZegoLiveStreamingPKAudienceView extends StatefulWidget {
     this.foregroundBuilder,
     this.backgroundBuilder,
     this.avatarConfig,
-  }) : super(key: key);
+  });
 
   final String mixerStreamID;
   final ZegoLiveStreamingPKMixerLayout mixerLayout;
@@ -61,20 +61,19 @@ class ZegoLiveStreamingPKAudienceViewState
               if (null != mixView) mixView,
               ...background(rectList),
               ...foreground(rectList),
-              ...separatorViews(rectList),
               if (null == mixView)
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Center(
-                      child: widget.config.pkBattle.hostReconnectingBuilder
-                              ?.call(
-                            context,
-                            widget.hosts.isEmpty
-                                ? null
-                                : widget.hosts.first.userInfo,
-                            {},
-                          ) ??
-                          const CircularProgressIndicator(),
+                      child:
+                          widget.config.pkBattle.hostReconnectingBuilder?.call(
+                                context,
+                                widget.hosts.isEmpty
+                                    ? null
+                                    : widget.hosts.first.userInfo,
+                                {},
+                              ) ??
+                              const CircularProgressIndicator(),
                     ),
                   ),
                 ),
@@ -83,24 +82,6 @@ class ZegoLiveStreamingPKAudienceViewState
         });
       },
     );
-  }
-
-  List<Widget> separatorViews(List<Rect> rectList) {
-    final separatorConfig = widget.config.pkBattle;
-    if (separatorConfig.separatorWidth <= 0) return const [];
-
-    return separatorRects(
-      rectList,
-      thickness: separatorConfig.separatorWidth,
-      length: separatorConfig.separatorHeight,
-    )
-        .map(
-          (rect) => Positioned.fromRect(
-            rect: rect,
-            child: ColoredBox(color: separatorConfig.separatorColor),
-          ),
-        )
-        .toList();
   }
 
   List<Widget> background(List<Rect> rectList) {

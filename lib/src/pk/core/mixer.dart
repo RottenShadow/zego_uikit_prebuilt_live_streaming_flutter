@@ -29,12 +29,6 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
 
   ZegoLiveStreamingPKMixerLayout? _layout;
 
-  /// a layout swap is pending in the microtask queue
-  bool _layoutDirty = false;
-
-  double _separatorWidth = 0;
-  int _separatorColorARGB = 0x000000;
-
   String get mixerID => _mixerID;
 
   ZegoLiveStreamingPKMixerLayout get layout =>
@@ -43,11 +37,7 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
   bool isMuted(String targetHostID) =>
       mutedUsersNotifier.value.contains(targetHostID);
 
-  void init({
-    required ZegoLiveStreamingPKMixerLayout? layout,
-    double separatorWidth = 0,
-    Color separatorColor = const Color(0xFF000000),
-  }) async {
+  void init({required ZegoLiveStreamingPKMixerLayout? layout}) async {
     if (_init) {
       return;
     }
@@ -63,8 +53,6 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     _init = true;
 
     _layout = layout;
-    _separatorWidth = separatorWidth;
-    _separatorColorARGB = separatorColor.toARGB32();
 
     if (ZegoUIKit().getRoomStateStream().value.reason !=
         ZegoRoomStateChangedReason.Logined) {
@@ -72,33 +60,6 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     } else {
       _mixerID = '${ZegoUIKit().getRoom().id}__mix';
     }
-  }
-
-  /// Swaps the mixer layout and separator, re-running the mixer task so the
-  /// change takes effect on the mixed stream.
-  ///
-  /// Layouts are compared by `==`, so pushing an equal layout is a no-op and
-  /// concurrent pushes collapse into one task update.
-  void updateLayout(ZegoLiveStreamingPKMixerLayout layout) {
-    if (!_init || _layout == layout) {
-      return;
-    }
-
-    _layout = layout;
-    _separatorWidth = layout.separatorWidth;
-    _separatorColorARGB = layout.separatorColor.toARGB32();
-
-    if (_layoutDirty) {
-      return;
-    }
-    _layoutDirty = true;
-    scheduleMicrotask(() async {
-      _layoutDirty = false;
-      if (!_init || _currentPKHosts.isEmpty) {
-        return;
-      }
-      await updateTask(_currentPKHosts, force: true);
-    });
   }
 
   Future<void> uninit() async {
@@ -285,12 +246,7 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
     final rectList = layout.getRectList(
       hosts.length,
     );
-    final insetRectList = _separatorWidth > 0
-        ? insetSharedEdges(rectList, _separatorWidth)
-        : rectList;
-    if (_separatorWidth > 0) {
-      mixerTask.backgroundColor = _separatorColorARGB;
-    }
+
     for (int hostIndex = 0; hostIndex < hosts.length; ++hostIndex) {
       final host = hosts.elementAt(hostIndex);
       final contentType = mutedUsersNotifier.value.contains(host.userInfo.id)
@@ -301,7 +257,7 @@ class ZegoUIKitPrebuiltLiveStreamingPKServiceMixer {
         ..contentType = contentType
         ..volume = 100
         ..renderMode = ZegoUIKitMixRenderMode.Fill
-        ..layout = insetRectList[hostIndex]
+        ..layout = rectList[hostIndex]
         ..soundLevelID = hostIndex;
       mixerTask.inputList.add(inputConfig);
     }

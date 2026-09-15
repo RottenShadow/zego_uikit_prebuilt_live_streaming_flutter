@@ -48,39 +48,14 @@ class ZegoLiveStreamingPKHostViewState
         scale: constraints.maxWidth / mixerLayoutResolution.width,
       );
 
-      final separatorConfig = widget.config.pkBattle;
-
       return withCameraPinchZoom(
         Stack(
           children: [
-            if (separatorConfig.separatorWidth > 0)
-              Positioned.fill(
-                child: ColoredBox(color: separatorConfig.separatorColor),
-              ),
             ...hostAudioVideoViews(rectList, constraints),
-            ...separatorViews(rectList),
           ],
         ),
       );
     });
-  }
-
-  List<Widget> separatorViews(List<Rect> rectList) {
-    final separatorConfig = widget.config.pkBattle;
-    if (separatorConfig.separatorWidth <= 0) return const [];
-
-    return separatorRects(
-      rectList,
-      thickness: separatorConfig.separatorWidth,
-      length: separatorConfig.separatorHeight,
-    )
-        .map(
-          (rect) => Positioned.fromRect(
-            rect: rect,
-            child: ColoredBox(color: separatorConfig.separatorColor),
-          ),
-        )
-        .toList();
   }
 
   List<Widget> hostAudioVideoViews(

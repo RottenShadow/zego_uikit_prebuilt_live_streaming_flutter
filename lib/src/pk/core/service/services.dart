@@ -24,7 +24,6 @@ import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/event/defines.dar
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/mixer.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/protocol.dart';
-import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 
 part 'completer.dart';
 
@@ -100,12 +99,6 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
 
   bool get isLiving => _coreData.liveStatusNotifier.value == LiveStatus.living;
 
-  /// Swaps the layout used to bake the mixed stream, so a separator change
-  /// takes effect without leaving and re-entering the room.
-  void updateMixerLayout(ZegoLiveStreamingPKMixerLayout layout) {
-    _mixer.updateLayout(layout);
-  }
-
   BuildContext? get context => _coreData.contextQuery?.call();
 
   void initServices({
@@ -124,13 +117,7 @@ mixin ZegoUIKitPrebuiltLiveStreamingPKServices {
     _coreData = coreData;
     _serviceInitialized = true;
 
-    _mixer.init(
-      layout: _coreData.prebuiltConfig?.pkBattle.mixerLayout,
-      separatorWidth: _coreData.prebuiltConfig?.pkBattle.separatorWidth ?? 0,
-      separatorColor:
-          _coreData.prebuiltConfig?.pkBattle.separatorColor ??
-          const Color(0xFF000000),
-    );
+    _mixer.init(layout: _coreData.prebuiltConfig?.pkBattle.mixerLayout);
     initEvents();
     listenPKUserChanged();
 
