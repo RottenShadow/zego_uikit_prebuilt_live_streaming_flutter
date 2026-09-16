@@ -7,7 +7,9 @@ import 'package:zego_uikit/zego_uikit.dart';
 // Project imports:
 import 'package:zego_uikit_prebuilt_live_streaming/src/config.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/components/common.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/core.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/defines.dart';
+import 'package:zego_uikit_prebuilt_live_streaming/src/pk/core/service/defines.dart';
 import 'package:zego_uikit_prebuilt_live_streaming/src/pk/layout/layout.dart';
 
 /// one stream, more host configs
@@ -65,8 +67,12 @@ class ZegoLiveStreamingPKAudienceViewState
                 Positioned.fill(
                   child: IgnorePointer(
                     child: Center(
-                      child:
-                          widget.config.pkBattle.hostReconnectingBuilder?.call(
+                      child: ZegoUIKitPrebuiltLiveStreamingPK
+                                  .instance.pkStateNotifier.value ==
+                              ZegoLiveStreamingPKBattleState.loading
+                          ? const SizedBox() // show nothing when mix is still loading
+                          : widget.config.pkBattle.hostReconnectingBuilder
+                                  ?.call(
                                 context,
                                 widget.hosts.isEmpty
                                     ? null

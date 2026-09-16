@@ -27,9 +27,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       subTag: 'pk event',
     );
 
-    if (isHost) {
-      _initHeartBeatTimer();
-    }
+    _initHeartBeatTimer();
     _coreData.hostManager?.notifier.addListener(_onHostUpdated);
 
     _listenEvents();
@@ -39,9 +37,6 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
   void _onHostUpdated() {
     if (isHost) {
       _initHeartBeatTimer();
-    } else {
-      _heartBeatTimer?.cancel();
-      _heartBeatTimer = null;
     }
   }
 
@@ -354,17 +349,24 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         } else {
           /// invitees(other room's host) accept, update connected users
           final pkUsersFromMap = getPKUsersFromInvitationMap(requestID);
-          updatePKUsers(
-            pkUsersFromMap.isNotEmpty
-                ? pkUsersFromMap
-                : (List.from(_coreData.currentPKUsers.value)
-                  ..add(
-                    ZegoLiveStreamingPKUser(
-                      userInfo: fromHost,
-                      liveID: fromLiveID,
-                    ),
-                  )),
-          );
+          final users = pkUsersFromMap.isNotEmpty
+              ? List<ZegoLiveStreamingPKUser>.from(pkUsersFromMap)
+              : List<ZegoLiveStreamingPKUser>.from(
+                  _coreData.currentPKUsers.value,
+                );
+          // Always ensure the accepting user is present — the invitation map
+          // on this device may not yet reflect the acceptance when the event
+          // fires (ZIM updates are async), so getPKUsersFromInvitationMap can
+          // return a stale list missing the user who just accepted.
+          if (!users.any((u) => u.userInfo.id == remoteUserInfo.userID)) {
+            users.add(
+              ZegoLiveStreamingPKUser(
+                userInfo: fromHost,
+                liveID: fromLiveID,
+              ),
+            );
+          }
+          updatePKUsers(users);
         }
         break;
       case ZegoSignalingPluginInvitationUserState.rejected:
@@ -734,19 +736,18 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     /// (PK end) and a later re-set (PK restart) can never interleave.
     return waitRoomAttributesCompleter('onRoomAttributesUpdated')
         .then((_) async {
-          try {
-            await handleRoomAttributesUpdated(event);
-          } finally {
-            completeRoomAttributesCompleter('onRoomAttributesUpdated');
-          }
-        })
-        .catchError((Object error) {
-          ZegoLoggerService.logError(
-            'onRoomAttributesUpdated error:$error',
-            tag: 'live-streaming-pk',
-            subTag: 'pk event',
-          );
-        });
+      try {
+        await handleRoomAttributesUpdated(event);
+      } finally {
+        completeRoomAttributesCompleter('onRoomAttributesUpdated');
+      }
+    }).catchError((Object error) {
+      ZegoLoggerService.logError(
+        'onRoomAttributesUpdated error:$error',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+    });
   }
 
   Future<void> handleRoomAttributesUpdated(
@@ -835,16 +836,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           // may not yet have propagated to this device. Intersect the invitation
           // map result with the snapshot IDs so a user absent from the snapshot
           // is also excluded here, preventing the remove→re-add oscillation.
-          final snapshotIDs = (jsonDecode(
-                      event.setProperties[roomPropKeyPKUsers] ?? '[]')
-                  as List<dynamic>)
-              .map((e) {
-                final m = e as Map<String, dynamic>;
-                final userInfo = m['user_info'] as Map<String, dynamic>?;
-                return userInfo?['id']?.toString() ?? '';
-              })
-              .where((id) => id.isNotEmpty)
-              .toSet();
+          final snapshotIDs =
+              (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '[]')
+                      as List<dynamic>)
+                  .map((e) {
+                    final m = e as Map<String, dynamic>;
+                    final userInfo = m['user_info'] as Map<String, dynamic>?;
+                    return userInfo?['id']?.toString() ?? '';
+                  })
+                  .where((id) => id.isNotEmpty)
+                  .toSet();
           final reconciled = snapshotIDs.isEmpty
               ? invitationPKUsers
               : invitationPKUsers
@@ -864,7 +865,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       }
 
       final updatedPKUsers =
-          (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '') as List<dynamic>)
+          (jsonDecode(event.setProperties[roomPropKeyPKUsers] ?? '')
+                  as List<dynamic>)
               .map(
                 (userJson) => ZegoLiveStreamingPKUser.fromJson(userJson),
               )
@@ -928,9 +930,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     updatePKState(ZegoLiveStreamingPKBattleState.idle);
 
     _coreData.events?.onStateUpdated?.call(
-      isLiving
-          ? ZegoLiveStreamingState.living
-          : ZegoLiveStreamingState.idle,
+      isLiving ? ZegoLiveStreamingState.living : ZegoLiveStreamingState.idle,
     );
   }
 
@@ -1193,33 +1193,43 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
 
       updatePKState(ZegoLiveStreamingPKBattleState.loading);
 
-      updatePKUsers(
-        pkUsersFromMap.isNotEmpty
-            ? pkUsersFromMap
-            : [
-                ZegoLiveStreamingPKUser(
-                  userInfo: ZegoUIKit().getLocalUser(),
-                  liveID: _coreData.roomID,
-                ),
-                ZegoLiveStreamingPKUser(
-                  userInfo: event.fromHost,
-                  liveID: event.fromLiveID,
-                ),
-              ],
-      );
+      final users = pkUsersFromMap.isNotEmpty
+          ? List<ZegoLiveStreamingPKUser>.from(pkUsersFromMap)
+          : [
+              ZegoLiveStreamingPKUser(
+                userInfo: ZegoUIKit().getLocalUser(),
+                liveID: _coreData.roomID,
+              ),
+              ZegoLiveStreamingPKUser(
+                userInfo: event.fromHost,
+                liveID: event.fromLiveID,
+              ),
+            ];
+      if (!users.any((u) => u.userInfo.id == event.fromHost.id)) {
+        users.add(
+          ZegoLiveStreamingPKUser(
+            userInfo: event.fromHost,
+            liveID: event.fromLiveID,
+          ),
+        );
+      }
+      updatePKUsers(users);
     } else {
       /// invitees(other room's host) accept, update connected users
-      updatePKUsers(
-        pkUsersFromMap.isNotEmpty
-            ? pkUsersFromMap
-            : (List.from(_coreData.currentPKUsers.value)
-              ..add(
-                ZegoLiveStreamingPKUser(
-                  userInfo: event.fromHost,
-                  liveID: event.fromLiveID,
-                ),
-              )),
-      );
+      final users = pkUsersFromMap.isNotEmpty
+          ? List<ZegoLiveStreamingPKUser>.from(pkUsersFromMap)
+          : List<ZegoLiveStreamingPKUser>.from(
+              _coreData.currentPKUsers.value,
+            );
+      if (!users.any((u) => u.userInfo.id == event.fromHost.id)) {
+        users.add(
+          ZegoLiveStreamingPKUser(
+            userInfo: event.fromHost,
+            liveID: event.fromLiveID,
+          ),
+        );
+      }
+      updatePKUsers(users);
     }
 
     _coreData.events?.pk.onOutgoingRequestAccepted?.call(event, () {});
