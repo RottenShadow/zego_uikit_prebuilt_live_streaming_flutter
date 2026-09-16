@@ -503,7 +503,7 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
     }
   }
 
-  void _onAppResumed() {
+  void _onAppResumed() async {
     if (_backgroundedAt == null) return;
     if (ZegoLiveStreamingMiniOverlayMachine().isMinimizing) {
       _backgroundedAt = null;
@@ -516,6 +516,19 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
     final dialogConfig = widget.config.dialogs.backgroundTimeout;
     if (elapsed >= dialogConfig.timeout && !_isBackgroundDialogShowing) {
       _showBackgroundTimeoutDialog();
+    } else {
+      /// Added Custom check for reconnect status
+      final success = await ZegoLiveStreamingManagers().plugins?.reconnectAll(
+            token: _storedToken,
+            markAsLargeRoom: widget.config.markAsLargeRoom,
+          );
+      if (success == false && mounted) {
+        events.onError?.call(ZegoUIKitError(
+          code: -1,
+          message: 'Failed to reconnect after background timeout',
+          method: '_showBackgroundTimeoutDialog',
+        ));
+      }
     }
   }
 
