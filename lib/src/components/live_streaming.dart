@@ -474,8 +474,6 @@ class _ZegoUIKitPrebuiltLiveStreamingState extends State<ZegoLiveStreamingPage>
 
     switch (state) {
       case AppLifecycleState.resumed:
-        ZegoLiveStreamingManagers().plugins?.tryReLogin();
-        ZegoLiveStreamingManagers().plugins?.tryReEnterRoom();
         _onAppResumed();
         break;
       case AppLifecycleState.inactive:

@@ -93,6 +93,46 @@ class ZegoLiveStreamingStatusManager {
           LiveStatus.living.index.toString(),
         );
       }
+    } else {
+      // ---------------------------------------------------------------------------
+      // FIX: Viewer sync — read current room properties on init.
+      //
+      // Before this fix, the viewer's notifier stayed at LiveStatus.notStart
+      // indefinitely when joining an already-live room, because:
+      //
+      //  1. The host sets liveStatus=living via setRoomProperty() before the
+      //     viewer joins.
+      //  2. getRoomPropertiesStream() only fires for *future* property updates,
+      //     not the initial snapshot delivered on room entry.
+      //  3. Therefore onRoomPropertiesUpdated() was never called for the viewer,
+      //     and the notifier never transitioned to living.
+      //
+      // This caused two cascading failures:
+      //  A. central_audio_video_view.dart:243 only renders the audio/video
+      //     container when liveStatus == living.  Stuck at notStart → empty
+      //     Container() → the viewer sees a blank screen.
+      //  B. PK battle's handleRoomAttributesUpdated (events.dart:809) waits
+      //     for liveStatusNotifier == living.  For the viewer this never
+      //     happened, so the room-attributes completer hung forever, blocking
+      //     the _roomAttributesCompleterQueue and preventing all subsequent
+      //     PK room-attribute updates from processing.
+      //
+      // The fix: on init, read the current room properties and set the
+      // notifier to whatever the host already published.
+      // ---------------------------------------------------------------------------
+      final roomProperties = ZegoUIKit().getRoomProperties();
+      if (roomProperties.containsKey(RoomPropertyKey.liveStatus.text)) {
+        final targetValue = LiveStatus.values[
+            int.tryParse(
+                    roomProperties[RoomPropertyKey.liveStatus.text]!.value) ??
+                LiveStatus.notStart.index];
+        ZegoLoggerService.logInfo(
+          'viewer init, sync liveStatus from room properties: $targetValue',
+          tag: 'live-streaming',
+          subTag: 'live status manager',
+        );
+        notifier.value = targetValue;
+      }
     }
   }
 

@@ -558,6 +558,46 @@ class ZegoLiveStreamingPlugins {
     });
   }
 
+  /// Waits for the signaling connection state to leave [ZegoSignalingPluginConnectionState.reconnecting].
+  /// ZIM login() hangs if called while the SDK is reconnecting, so we must
+  /// wait for it to settle into either [ZegoSignalingPluginConnectionState.connected]
+  /// or [ZegoSignalingPluginConnectionState.disconnected] before proceeding.
+  Future<void> _waitForReconnectingSettled({Duration timeout = const Duration(seconds: 5)}) async {
+    final currentState = ZegoUIKit().getSignalingPlugin().getConnectionState();
+    if (currentState != ZegoSignalingPluginConnectionState.reconnecting) {
+      return;
+    }
+
+    ZegoLoggerService.logInfo(
+      'signaling is reconnecting, waiting for it to settle...',
+      tag: 'live-streaming-plugin',
+      subTag: 'reconnectAll',
+    );
+
+    final completer = Completer<void>();
+    final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      final state = ZegoUIKit().getSignalingPlugin().getConnectionState();
+      if (state != ZegoSignalingPluginConnectionState.reconnecting) {
+        if (timer.isActive) timer.cancel();
+        if (!completer.isCompleted) completer.complete();
+      }
+    });
+
+    Future.delayed(timeout, () {
+      if (timer.isActive) timer.cancel();
+      if (!completer.isCompleted) {
+        ZegoLoggerService.logInfo(
+          'wait for reconnecting settled timed out, proceeding anyway',
+          tag: 'live-streaming-plugin',
+          subTag: 'reconnectAll',
+        );
+        completer.complete();
+      }
+    });
+
+    return completer.future;
+  }
+
   /// Checks all connection states (Express engine, Express room, Signaling user,
   /// Signaling room) and attempts to reconnect any that are disconnected.
   ///
@@ -600,6 +640,8 @@ class ZegoLiveStreamingPlugins {
 
       // Fix signaling user login if disconnected
       if (!signalingUserOk) {
+        // ZIM login() hangs if called while SDK is reconnecting — wait for it to settle
+        await _waitForReconnectingSettled();
         try {
           await ZegoUIKit().getSignalingPlugin().logout();
           await ZegoUIKit().getSignalingPlugin().login(
