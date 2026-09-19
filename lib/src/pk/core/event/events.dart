@@ -86,39 +86,58 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         );
 
         if (isHost) {
-          /// The PK recovery logic below is only for the LIVE creator whose app
-          /// was killed during a PK and re-enters the room. It cannot re-enter
-          /// the PK, so it quits and cleans up the stale room properties.
+          /// The PK recovery logic below handles two cases:
+          /// 1. App killed during PK — pkState is idle on restart, tear down
+          ///    stale mixer/streams/state via teardownPKFromRoomProperties.
+          /// 2. Host disconnected for 30s+ — heartbeat timer removed remote
+          ///    hosts, set pkState idle, and quit the ZIM invitation. On
+          ///    reconnection, complete the teardown here.
           ///
           /// An audience/viewer must NOT run this recovery, otherwise it would
           /// tear down the PK room properties (and notify the invitation) for
           /// every other participant while a PK is still ongoing.
+          ///
+          /// Guard with pkState == idle to avoid destroying active PK
+          /// properties during the race where the deferred query fires after
+          /// the acceptance flow has already written pk_users to the room.
           if (result.properties.containsKey(roomPropKeyRequestID)) {
-            /// After entering the room, if found that there was a PK going on,
-            /// which indicates that the app was killed earlier.
-            /// At this time, It cannot re-enter the PK.
+            if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
+              ZegoLoggerService.logInfo(
+                'room property contain pk keys, teardown',
+                tag: 'live-streaming-pk',
+                subTag: 'pk event',
+              );
 
+              await teardownPKFromRoomProperties();
+            }
+          } else if (pkStateNotifier.value !=
+              ZegoLiveStreamingPKBattleState.idle) {
+            /// PK keys were already deleted by other hosts while we were
+            /// offline. Tear down the local mixer/task/state so the host
+            /// doesn't remain stuck in a stale PK state.
             ZegoLoggerService.logInfo(
-              'room property contain pk keys, quit pk',
+              'room property missing pk keys but local state is '
+              '${pkStateNotifier.value}, teardown',
               tag: 'live-streaming-pk',
               subTag: 'pk event',
             );
 
-            quitPKBattle(
-              requestID: result.properties[roomPropKeyRequestID] ?? '',
-              force: true,
-            );
+            await teardownPKFromRoomProperties();
           }
 
-          await ZegoUIKit().getSignalingPlugin().deleteRoomProperties(
-                roomID: ZegoUIKit().getSignalingPlugin().getRoomID(),
-                keys: [
-                  roomPropKeyRequestID,
-                  roomPropKeyHost,
-                  roomPropKeyPKUsers
-                ],
-                showErrorLog: false,
-              );
+          /// Only delete PK room properties when idle to avoid destroying
+          /// properties written by an active PK acceptance flow.
+          if (pkStateNotifier.value == ZegoLiveStreamingPKBattleState.idle) {
+            await ZegoUIKit().getSignalingPlugin().deleteRoomProperties(
+                  roomID: ZegoUIKit().getSignalingPlugin().getRoomID(),
+                  keys: [
+                    roomPropKeyRequestID,
+                    roomPropKeyHost,
+                    roomPropKeyPKUsers
+                  ],
+                  showErrorLog: false,
+                );
+          }
         }
       });
     }
@@ -155,7 +174,12 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     ZegoSignalingPluginInvitationUserStateChangedEvent event,
   ) {
     ZegoLoggerService.logInfo(
-      'onInvitationUserStateChanged, event:$event',
+      'onInvitationUserStateChanged, event:$event, '
+      'currentRequestID:${_coreData.currentRequestID}, '
+      'lastQuitRequestID:${_coreData.lastQuitRequestID}, '
+      'pkState:${pkStateNotifier.value}, '
+      'initiator:${ZegoUIKit().getSignalingPlugin().getAdvanceInitiator(event.invitationID)?.userID}, '
+      'currentPKUsers:[${_coreData.currentPKUsers.value.map((u) => u.userInfo.id).join(',')}]',
       tag: 'live-streaming-pk',
       subTag: 'pk event',
     );
@@ -498,8 +522,13 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         }
 
         if (alreadyBrokenIDs.isNotEmpty) {
+          final localHostID = _coreData.hostManager?.notifier.value?.id;
+          final isLocalHostBroken =
+              localHostID != null && alreadyBrokenIDs.contains(localHostID);
+
           ZegoLoggerService.logInfo(
-            'heartbeat timer, $alreadyBrokenIDs heartbeat had broken so long, remove from pk,',
+            'heartbeat timer, $alreadyBrokenIDs heartbeat had broken so long, remove from pk,'
+            ' isLocalHostBroken:$isLocalHostBroken,',
             tag: 'live-streaming-pk',
             subTag: 'pk event',
           );
@@ -508,12 +537,28 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
             _coreData.quitRequestUserIDs.add(id);
           }
 
-          updatePKUsers(
-            List.from(_coreData.currentPKUsers.value)
-              ..removeWhere(
+          List<ZegoLiveStreamingPKUser> updatedPKUsers;
+          if (isLocalHostBroken) {
+            updatedPKUsers = <ZegoLiveStreamingPKUser>[];
+          } else {
+            updatedPKUsers = List<ZegoLiveStreamingPKUser>.from(
+              _coreData.currentPKUsers.value,
+            )..removeWhere(
                 (pkUser) => alreadyBrokenIDs.contains(pkUser.userInfo.id),
-              ),
-          );
+              );
+          }
+
+          /// If only the local host remains after removing broken-heartbeat
+          /// users, send an empty list so that [hostOnPKUsersChanged] routes
+          /// to [disconnectedHostOnPKUsersChanged] and sets pkState idle
+          /// immediately — the actual teardown (mixer, streams, room props)
+          /// is deferred to [queryRoomProperties] on reconnection.
+          if (updatedPKUsers.length == 1 &&
+              updatedPKUsers.first.userInfo.id == localHostID) {
+            updatedPKUsers = <ZegoLiveStreamingPKUser>[];
+          }
+
+          updatePKUsers(updatedPKUsers);
         }
       },
     );
@@ -802,7 +847,18 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         }
       }
 
-      /// wait living
+      /// ---------------------------------------------------------------------------
+      /// FIX: liveStatusNotifier wait — both host and audience.
+      ///
+      /// Previously this wait was inside `if (isHost)`.  Audiences joining
+      /// an in-progress PK would receive pk_users via room attributes BEFORE
+      /// live_status arrived via roomExtraInfo.  `onPKUsersChanged` bailed
+      /// on `!isLiving` and nobody re-triggered when isLiving became true.
+      ///
+      /// The original deadlock (audience awaits forever) is already prevented
+      /// by the `value != living` check: if the notifier is already living
+      /// when we enter, the wait is skipped entirely.
+      /// ---------------------------------------------------------------------------
       if (_coreData.liveStatusNotifier.value != LiveStatus.living) {
         final completer = Completer<void>();
         void onLiveStatusChanged() {

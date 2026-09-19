@@ -88,10 +88,12 @@ class ZegoLiveStreamingCentralAudioVideoViewState
           ZegoLiveStreamingPKBattleStateCombineNotifier.instance.state,
       builder: (context, isInPK, _) {
         if (isInPK) {
-          if (ZegoUIKitPrebuiltLiveStreamingPK.instance.pkStateNotifier.value ==
-                  ZegoLiveStreamingPKBattleState.inPK ||
-              ZegoUIKitPrebuiltLiveStreamingPK.instance.pkStateNotifier.value ==
-                  ZegoLiveStreamingPKBattleState.loading) {
+          final pkState = ZegoUIKitPrebuiltLiveStreamingPK.instance.pkStateNotifier.value;
+          final hostCount = ZegoUIKitPrebuiltLiveStreamingPK
+              .instance.connectedPKHostsNotifier.value.length;
+          if ((pkState == ZegoLiveStreamingPKBattleState.inPK ||
+                  pkState == ZegoLiveStreamingPKBattleState.loading) &&
+              hostCount >= 2) {
             return pkBattleView(
               constraints: widget.constraints,
             );

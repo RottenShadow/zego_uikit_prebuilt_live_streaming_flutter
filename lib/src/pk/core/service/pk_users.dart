@@ -576,6 +576,15 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
           await _mixer.stopPlayStream();
         }
 
+        /// Unmute the local room host so the normal audioVideoView shows
+        /// their stream. The host was muted at PK entry (line 694) and
+        /// teardownPKFromRoomProperties also unmutes (events.dart:960),
+        /// but the heartbeat→clear path goes through here instead.
+        final localHostID = _coreData.hostManager?.notifier.value?.id;
+        if (localHostID != null) {
+          await ZegoUIKit().muteUserAudioVideo(localHostID, false);
+        }
+
         updatePKState(ZegoLiveStreamingPKBattleState.idle);
       }
 
