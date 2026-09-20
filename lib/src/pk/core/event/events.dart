@@ -53,7 +53,7 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     queryRoomProperties();
   }
 
-  void queryRoomProperties() async {
+  void queryRoomProperties() {
     ZegoLoggerService.logInfo(
       'queryRoomProperties',
       tag: 'live-streaming-pk',
@@ -73,11 +73,6 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           .getRoomStateStream()
           .listen(onWaitingQueryRoomProperties);
     } else {
-      /// Express room reconnects before ZIM user login. ZIM APIs
-      /// (deleteRoomProperties, callQuit) fail with 6000121 if called
-      /// before login completes. Wait for connection state = connected.
-      await _waitForSignalingConnected();
-
       ZegoUIKit()
           .getSignalingPlugin()
           .queryRoomProperties(
@@ -89,6 +84,11 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           tag: 'live-streaming-pk',
           subTag: 'pk event',
         );
+
+        /// Express room reconnects before ZIM user login. ZIM APIs
+        /// (deleteRoomProperties, callQuit) fail with 6000121 if called
+        /// before login completes. Wait for connection state = connected.
+        await _waitForSignalingConnected();
 
         if (isHost) {
           /// The PK recovery logic below handles two cases:
@@ -158,7 +158,8 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     final startTime = DateTime.now();
 
     // 1. Wait for ZIM user login
-    var connectionState = ZegoUIKit().getSignalingPlugin().getConnectionState();
+    var connectionState =
+        ZegoUIKit().getSignalingPlugin().getConnectionState();
     if (connectionState != ZegoSignalingPluginConnectionState.connected) {
       ZegoLoggerService.logInfo(
         'signaling user not connected ($connectionState), waiting...',
@@ -167,14 +168,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       );
 
       final completer = Completer<void>();
-      Timer.periodic(const Duration(milliseconds: 200), (timer) {
-        final remaining = timeout - DateTime.now().difference(startTime);
+      final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        final remaining =
+            timeout - DateTime.now().difference(startTime);
         if (remaining <= Duration.zero) {
           if (timer.isActive) timer.cancel();
           if (!completer.isCompleted) completer.complete();
           return;
         }
-        final state = ZegoUIKit().getSignalingPlugin().getConnectionState();
+        final state =
+            ZegoUIKit().getSignalingPlugin().getConnectionState();
         if (state == ZegoSignalingPluginConnectionState.connected) {
           if (timer.isActive) timer.cancel();
           if (!completer.isCompleted) completer.complete();
@@ -199,14 +202,16 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
       );
 
       final completer = Completer<void>();
-      Timer.periodic(const Duration(milliseconds: 200), (timer) {
-        final remaining = timeout - DateTime.now().difference(startTime);
+      final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        final remaining =
+            timeout - DateTime.now().difference(startTime);
         if (remaining <= Duration.zero) {
           if (timer.isActive) timer.cancel();
           if (!completer.isCompleted) completer.complete();
           return;
         }
-        final state = ZegoUIKit().getSignalingPlugin().getRoomState();
+        final state =
+            ZegoUIKit().getSignalingPlugin().getRoomState();
         if (state == ZegoSignalingPluginRoomState.connected) {
           if (timer.isActive) timer.cancel();
           if (!completer.isCompleted) completer.complete();
