@@ -533,6 +533,11 @@ extension PKServiceConnectedUsers on ZegoUIKitPrebuiltLiveStreamingPKServices {
       /// stop mixer
       await _mixer.stopTask();
 
+      /// Wait for ZIM user login before calling ZIM APIs.
+      /// Express room can reconnect before ZIM login completes, so
+      /// deleteRoomProperties and callQuit fail with 6000121.
+      await _waitForSignalingConnected();
+
       /// delete room property, notify the host info && layout
       await ZegoUIKit().getSignalingPlugin().deleteRoomProperties(
         roomID: _coreData.roomID,
