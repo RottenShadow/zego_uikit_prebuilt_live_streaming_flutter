@@ -148,47 +148,83 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
     }
   }
 
-  /// Waits for the signaling connection state to reach [ZegoSignalingPluginConnectionState.connected].
-  /// Express room can reconnect before ZIM user login completes, so ZIM APIs
-  /// (deleteRoomProperties, callQuit) fail with 6000121 if called too early.
+  /// Waits for both ZIM user login and ZIM room join to complete.
+  /// Express room can reconnect before ZIM user/room, so ZIM APIs
+  /// (deleteRoomProperties, callQuit) fail with 6000121/6000321 if called
+  /// before both are established.
   Future<void> _waitForSignalingConnected({
     Duration timeout = const Duration(seconds: 10),
   }) async {
-    final currentState =
+    final startTime = DateTime.now();
+
+    // 1. Wait for ZIM user login
+    var connectionState =
         ZegoUIKit().getSignalingPlugin().getConnectionState();
-    if (currentState == ZegoSignalingPluginConnectionState.connected) {
-      return;
+    if (connectionState != ZegoSignalingPluginConnectionState.connected) {
+      ZegoLoggerService.logInfo(
+        'signaling user not connected ($connectionState), waiting...',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+
+      final completer = Completer<void>();
+      final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        final remaining =
+            timeout - DateTime.now().difference(startTime);
+        if (remaining <= Duration.zero) {
+          if (timer.isActive) timer.cancel();
+          if (!completer.isCompleted) completer.complete();
+          return;
+        }
+        final state =
+            ZegoUIKit().getSignalingPlugin().getConnectionState();
+        if (state == ZegoSignalingPluginConnectionState.connected) {
+          if (timer.isActive) timer.cancel();
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
+
+      await completer.future;
+      ZegoLoggerService.logInfo(
+        'signaling user connection: ${ZegoUIKit().getSignalingPlugin().getConnectionState()}',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
     }
 
-    ZegoLoggerService.logInfo(
-      'signaling not connected ($currentState), waiting...',
-      tag: 'live-streaming-pk',
-      subTag: 'pk event',
-    );
+    // 2. Wait for ZIM room join (deleteRoomProperties requires this)
+    var roomState = ZegoUIKit().getSignalingPlugin().getRoomState();
+    if (roomState != ZegoSignalingPluginRoomState.connected) {
+      ZegoLoggerService.logInfo(
+        'signaling room not connected ($roomState), waiting...',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
 
-    final completer = Completer<void>();
-    final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
-      final state =
-          ZegoUIKit().getSignalingPlugin().getConnectionState();
-      if (state == ZegoSignalingPluginConnectionState.connected) {
-        if (timer.isActive) timer.cancel();
-        if (!completer.isCompleted) completer.complete();
-      }
-    });
+      final completer = Completer<void>();
+      final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+        final remaining =
+            timeout - DateTime.now().difference(startTime);
+        if (remaining <= Duration.zero) {
+          if (timer.isActive) timer.cancel();
+          if (!completer.isCompleted) completer.complete();
+          return;
+        }
+        final state =
+            ZegoUIKit().getSignalingPlugin().getRoomState();
+        if (state == ZegoSignalingPluginRoomState.connected) {
+          if (timer.isActive) timer.cancel();
+          if (!completer.isCompleted) completer.complete();
+        }
+      });
 
-    Future.delayed(timeout, () {
-      if (timer.isActive) timer.cancel();
-      if (!completer.isCompleted) {
-        ZegoLoggerService.logInfo(
-          'wait for signaling connected timed out, proceeding anyway',
-          tag: 'live-streaming-pk',
-          subTag: 'pk event',
-        );
-        completer.complete();
-      }
-    });
-
-    return completer.future;
+      await completer.future;
+      ZegoLoggerService.logInfo(
+        'signaling room state: ${ZegoUIKit().getSignalingPlugin().getRoomState()}',
+        tag: 'live-streaming-pk',
+        subTag: 'pk event',
+      );
+    }
   }
 
   void uninitEvents() {
