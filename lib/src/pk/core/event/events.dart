@@ -85,6 +85,11 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
           subTag: 'pk event',
         );
 
+        /// Express room reconnects before ZIM user login. ZIM APIs
+        /// (deleteRoomProperties, callQuit) fail with 6000121 if called
+        /// before login completes. Wait for connection state = connected.
+        await _waitForSignalingConnected();
+
         if (isHost) {
           /// The PK recovery logic below handles two cases:
           /// 1. App killed during PK — pkState is idle on restart, tear down
@@ -141,6 +146,49 @@ extension ZegoUIKitPrebuiltLiveStreamingPKEventsV2
         }
       });
     }
+  }
+
+  /// Waits for the signaling connection state to reach [ZegoSignalingPluginConnectionState.connected].
+  /// Express room can reconnect before ZIM user login completes, so ZIM APIs
+  /// (deleteRoomProperties, callQuit) fail with 6000121 if called too early.
+  Future<void> _waitForSignalingConnected({
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final currentState =
+        ZegoUIKit().getSignalingPlugin().getConnectionState();
+    if (currentState == ZegoSignalingPluginConnectionState.connected) {
+      return;
+    }
+
+    ZegoLoggerService.logInfo(
+      'signaling not connected ($currentState), waiting...',
+      tag: 'live-streaming-pk',
+      subTag: 'pk event',
+    );
+
+    final completer = Completer<void>();
+    final timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      final state =
+          ZegoUIKit().getSignalingPlugin().getConnectionState();
+      if (state == ZegoSignalingPluginConnectionState.connected) {
+        if (timer.isActive) timer.cancel();
+        if (!completer.isCompleted) completer.complete();
+      }
+    });
+
+    Future.delayed(timeout, () {
+      if (timer.isActive) timer.cancel();
+      if (!completer.isCompleted) {
+        ZegoLoggerService.logInfo(
+          'wait for signaling connected timed out, proceeding anyway',
+          tag: 'live-streaming-pk',
+          subTag: 'pk event',
+        );
+        completer.complete();
+      }
+    });
+
+    return completer.future;
   }
 
   void uninitEvents() {
