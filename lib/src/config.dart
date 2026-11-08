@@ -1390,9 +1390,14 @@ class ZegoLiveStreamingPreviewBottomBarConfig {
   bool isVisible;
   bool showBeautyEffectButton;
 
+  /// Whether to show the camera toggle button on the preview bottom bar,
+  /// between the microphone toggle and the beauty effect button. Default is true.
+  bool showCameraToggle;
+
   ZegoLiveStreamingPreviewBottomBarConfig({
     this.isVisible = true,
     this.showBeautyEffectButton = true,
+    this.showCameraToggle = true,
   });
 
   @override
@@ -1400,6 +1405,7 @@ class ZegoLiveStreamingPreviewBottomBarConfig {
     return 'ZegoLiveStreamingPreviewBottomBarConfig:{'
         'isVisible:$isVisible, '
         'showBeautyEffectButton:$showBeautyEffectButton, '
+        'showCameraToggle:$showCameraToggle, '
         '}';
   }
 }

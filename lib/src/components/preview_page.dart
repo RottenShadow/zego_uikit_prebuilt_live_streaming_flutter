@@ -23,7 +23,7 @@ import 'dart:math' as math; // import this
 /// user should be login before page enter
 class ZegoLiveStreamingPreviewPage extends StatefulWidget {
   const ZegoLiveStreamingPreviewPage({
-    Key? key,
+    super.key,
     required this.appID,
     required this.appSign,
     required this.userID,
@@ -34,7 +34,7 @@ class ZegoLiveStreamingPreviewPage extends StatefulWidget {
     required this.config,
     required this.popUpManager,
     required this.kickOutNotifier,
-  }) : super(key: key);
+  });
 
   final int appID;
   final String appSign;
@@ -242,19 +242,45 @@ class _ZegoLiveStreamingPreviewPageState
     final beautyButtonPlaceHolder =
         SizedBox(width: buttonSize.width, height: buttonSize.height);
 
+    final bottomBarConfig = widget.config.preview.bottomBar;
+
     return Align(
       alignment: Alignment.bottomCenter,
       child: Padding(
         padding: EdgeInsets.only(
-          left: 89.zR,
+          left: 24.zR,
           top: 0,
-          right: 89.zR,
+          right: 24.zR,
           bottom: 97.zR,
         ),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            widget.config.preview.bottomBar.showBeautyEffectButton
+            if (bottomBarConfig.showCameraToggle) ...[
+              ZegoToggleCameraButton(
+                buttonSize: buttonSize,
+                iconSize: iconSize,
+                normalIcon: ButtonIcon(
+                  icon: widget.config.bottomMenuBar.buttonStyle
+                          ?.toggleCameraOnButtonIcon ??
+                      ZegoLiveStreamingImage.asset(
+                        ZegoLiveStreamingIconUrls.toolbarCameraNormal,
+                      ),
+                  backgroundColor: Colors.transparent,
+                ),
+                offIcon: ButtonIcon(
+                  icon: widget.config.bottomMenuBar.buttonStyle
+                          ?.toggleCameraOffButtonIcon ??
+                      ZegoLiveStreamingImage.asset(
+                        ZegoLiveStreamingIconUrls.toolbarCameraOff,
+                      ),
+                  backgroundColor: Colors.transparent,
+                ),
+                defaultOn: true,
+              ),
+              // SizedBox(width: 24.zR),
+            ],
+            bottomBarConfig.showBeautyEffectButton
                 ? ZegoLiveStreamingBeautyEffectButton(
                     translationText: widget.config.innerText,
                     rootNavigator: widget.config.rootNavigator,
@@ -268,9 +294,9 @@ class _ZegoLiveStreamingPreviewPageState
                         : null,
                   )
                 : beautyButtonPlaceHolder,
-            SizedBox(width: 48.zR),
+            SizedBox(width: 24.zR),
             startButton(),
-            SizedBox(width: 48.zR),
+            SizedBox(width: 24.zR),
             beautyButtonPlaceHolder,
           ],
         ),
